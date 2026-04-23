@@ -1,0 +1,41 @@
+Connection Requirements
+
+Endpoint: ws://localhost:5050/notification
+Authentication: JWT token required via Authorization header or auth.token
+Format: Bearer YOUR_JWT_TOKEN
+
+Available Events
+Connection Events
+EventDirectionDescriptionconnectReceiveFired when successfully connected to serverdisconnectReceiveFired when connection is lost
+Health Check
+EventDirectionDescriptionpingSendCheck server connectionpongReceiveServer response to ping
+Notification Events
+1. User Registration (userRegistration.create)
+Trigger: New user registers in the system
+Payload Structure:
+
+type: Event identifier
+title: "New User Registered"
+message: "{name} has registered as {role}"
+createdAt: Timestamp
+meta: Contains id, email, name, role, action
+
+2. Service Creation (service.create)
+Trigger: New service is created
+Payload Structure:
+
+type: Event identifier
+title: "New Service Created"
+message: "{serviceName} has been created."
+createdAt: Timestamp
+meta: Service-related metadata
+
+User Notification Preferences
+Users can enable/disable specific notification types:
+
+User Registration - Alerts for new user sign-ups
+Service Creation - Alerts for new services
+User Updates - User profile/account changes
+Reviews - Review-related notifications
+Posts - Post-related notifications
+Messages - Direct message notifications

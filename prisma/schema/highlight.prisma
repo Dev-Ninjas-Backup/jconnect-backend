@@ -1,0 +1,9 @@
+model Highlight {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fileLink  String
+  createdAt DateTime @default(now())
+
+  @@map("highlights")
+}

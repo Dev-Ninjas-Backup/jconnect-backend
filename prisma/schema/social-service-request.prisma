@@ -1,0 +1,24 @@
+model SocialServiceRequest {
+  id                    String   @id @default(uuid())
+  serviceName           String
+  socialServiceId       String
+  platforms             String[]
+  artistName            String
+  price                 Float
+  preferredDeliveryDate DateTime
+  specialNotes          String?
+  attachedFiles         String[]
+  status                String   @default("Pending")
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @default(now()) @updatedAt
+
+  // Buyer/Creator Relation
+  buyerId            String
+  socialServiceBuyer User   @relation("SocialRequestBuyer", fields: [buyerId], references: [id], onDelete: Cascade)
+
+  // Requester/Target Relation
+  artistID String
+  artist   User   @relation("SocialRequestRequester", fields: [artistID], references: [id], onDelete: Cascade)
+
+  @@map("social_service_request")
+}

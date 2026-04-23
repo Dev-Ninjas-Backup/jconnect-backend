@@ -1,0 +1,7 @@
+model Setting {
+  id                   String   @id @default("platform_settings")
+  platformFee_percents Float    @default(0)
+  minimum_payout       Int?     @default(0)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+}

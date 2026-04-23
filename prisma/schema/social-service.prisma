@@ -1,0 +1,17 @@
+model SocialService {
+  id                    String   @id @default(uuid())
+  serviceName           String
+  platforms             String[]
+  artistName            String
+  price                 Float
+  preferredDeliveryDate DateTime
+  specialNotes          String?
+  attachedFiles         String[]
+  status                String   @default("Pending")
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @default(now()) @updatedAt
+  artistID              String
+  artist                User     @relation(fields: [artistID], references: [id])
+
+  @@map("social_service")
+}

@@ -1,0 +1,19 @@
+model Dispute {
+  id          String        @id @default(uuid())
+  orderId     String
+  order       Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  description String
+  resolution  String?
+  status      DisputeStatus @default(UNDER_REVIEW)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  proofs      String[]
+}
+
+enum DisputeStatus {
+  UNDER_REVIEW
+  RESOLVED
+  REJECTED
+}

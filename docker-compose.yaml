@@ -1,0 +1,81 @@
+services:
+    app:
+        image: softvence/jconnect-backend:latest
+        container_name: jconnect-backend
+        profiles:
+            - prod
+        platform: linux/amd64
+        build:
+            context: .
+            dockerfile: Dockerfile
+        ports:
+            - "${PORT}:${PORT}"
+        env_file:
+            - .env
+        depends_on:
+            db:
+                condition: service_healthy
+        restart: unless-stopped
+        networks:
+            - jconnect-backend
+        command: >
+            sh -c "
+              echo '🏁 Waiting for DB...';
+              sleep 5;
+              npx prisma migrate deploy;
+              echo '🚀 Starting app...';
+              npm run start:docker
+            "
+
+    prisma-studio:
+        image: softvence/jconnect-backend:latest
+        container_name: jconnect_prisma_studio
+        platform: linux/amd64
+        restart: unless-stopped
+        profiles:
+            - prod
+            - dev
+        env_file:
+            - .env
+        environment:
+            DATABASE_URL: postgresql://jconnect_user:jconnect123Pass@db:5432/jconnect_db
+        ports:
+            - '5555:5555'
+        command: npx prisma studio --port 5555 --browser none
+        depends_on:
+            db:
+                condition: service_healthy
+        networks:
+            - jconnect-backend
+
+    db:
+        image: postgres:16-alpine
+        container_name: jconnect-db
+        profiles:
+            - dev
+            - prod
+        environment:
+            - POSTGRES_USER=jconnect_user
+            - POSTGRES_PASSWORD=jconnect123Pass
+            - POSTGRES_DB=jconnect_db
+            - PGDATA=/var/lib/postgresql/data/pgdata
+        volumes:
+            - jconnect_db:/var/lib/postgresql/data
+        ports:
+            -  "5433:5432"
+        healthcheck:
+            test: [ "CMD-SHELL", "pg_isready -U jconnect_user -d jconnect_db" ]
+            interval: 10s
+            timeout: 5s
+            retries: 5
+        restart: unless-stopped
+        networks:
+            - jconnect-backend
+
+volumes:
+    jconnect_db:
+        driver: local
+
+networks:
+    jconnect-backend:
+        driver: bridge

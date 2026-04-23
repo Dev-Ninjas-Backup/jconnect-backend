@@ -1,0 +1,10 @@
+model PaymentMethod {
+  id            String  @id @default(cuid())
+  paymentMethod String
+  cardBrand     String?
+  last4         String?
+  expMonth      Int?
+  expYear       Int?
+  user          User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId        String
+}

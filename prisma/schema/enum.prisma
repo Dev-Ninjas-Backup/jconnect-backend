@@ -1,0 +1,40 @@
+// ENUMS_START
+
+enum AuthProvider {
+  GOOGLE
+  FACEBOOK
+  APPLE
+}
+
+enum Role {
+  USER
+  MODERATOR
+  ADMIN
+  SUPER_ADMIN
+  FINANCE_ADMIN
+  SUPPORT_ADMIN
+  ANALYST
+  MEMBER
+  ARTIST
+}
+
+enum ValidationType {
+  EMAIL
+  PHONE
+}
+
+enum ServiceType {
+  SOCIAL_POST
+  SERVICE
+}
+
+enum SocialLogo {
+  SELECT
+  FACEBOOK
+  INSTAGRAM
+  TWITTER
+  LINKEDIN
+  YOUTUBE
+  SNAPCHAT
+  TWITCH
+}

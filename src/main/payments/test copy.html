@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="bn">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Add & Attach Stripe Payment Method</title>
+        <script src="https://js.stripe.com/v3/"></script>
+        <style>
+            body {
+                font-family: sans-serif;
+                padding: 20px;
+                max-width: 500px;
+                margin: auto;
+            }
+            #card-element {
+                padding: 12px;
+                border: 1px solid #ccc;
+                border-radius: 6px;
+                margin-top: 8px;
+            }
+            input,
+            button {
+                width: 100%;
+                padding: 10px;
+                margin-top: 10px;
+            }
+            button {
+                background: #1f6feb;
+                color: white;
+                border: none;
+                border-radius: 6px;
+                cursor: pointer;
+            }
+            .log {
+                margin-top: 15px;
+                padding: 10px;
+                border-radius: 6px;
+                background: #f1f5f9;
+            }
+            .success {
+                background: #ecfdf5;
+                color: #065f46;
+            }
+            .error {
+                background: #fff1f2;
+                color: #991b1b;
+            }
+        </style>
+    </head>
+    <body>
+        <h3>Add & Attach Stripe Card</h3>
+
+        <label>Bearer Token</label>
+        <input id="token" placeholder="eyJhbGciOi..." />
+
+        <label>Card Holder Name</label>
+        <input id="name" placeholder="John Doe" />
+
+        <div id="card-element"></div>
+
+        <button onclick="addCard()">Add Card</button>
+
+        <div id="status" class="log">Ready</div>
+
+        <script>
+            const stripe = Stripe(
+                "pk_test_WQBTIEi74MXos7xITb9OBdpI00GnoBrHFC",
+            ); // Your publishable key
+            const elements = stripe.elements();
+            const card = elements.create("card");
+            card.mount("#card-element");
+
+            // const baseURL = "http://16.170.173.35:5050"; 
+            const baseURL = "http://51.20.47.128:5050"; 
+            // const baseURL = "http://api.theconnectapp.net"; 
+            // const baseURL = "http://localhost:5050"; 
+            // const baseURL = "https://neva-unlamentable-judson.ngrok-free.dev"; // backend API base
+            const statusEl = document.getElementById("status");
+
+            async function addCard() {
+                const rawToken = document.getElementById("token").value.trim();
+                const name = document.getElementById("name").value.trim();
+
+                if (!rawToken) {
+                    statusEl.textContent = "Token required";
+                    statusEl.className = "log error";
+                    return;
+                }
+
+                const authHeader = rawToken.startsWith("Bearer ") ? rawToken : `Bearer ${rawToken}`;
+
+                statusEl.textContent = "Creating PaymentMethod...";
+                const { paymentMethod, error } = await stripe.createPaymentMethod({
+                    type: "card",
+                    card: card,
+                    billing_details: { name },
+                });
+
+                if (error) {
+                    statusEl.textContent = "Stripe error: " + error.message;
+                    statusEl.className = "log error";
+                    return;
+                }
+
+                statusEl.textContent = "Attaching to backend...";
+
+                try {
+                    // ✅ Send pm_id as query parameter (backend unchanged)
+                    const url = new URL(`${baseURL}/payments/payment_method_attached`);
+                    url.searchParams.append("payment_method_id", paymentMethod.id);
+
+                    const res = await fetch(url, {
+                        method: "POST",
+                        headers: {
+                            Authorization: authHeader,
+                        },
+                    });
+
+                    const data = await res.json();
+
+                    if (res.ok) {
+                        statusEl.textContent =
+                            "Success ✅ PaymentMethod attached: " + paymentMethod.id;
+                        statusEl.className = "log success";
+                    } else {
+                        statusEl.textContent = "Backend error ❌ " + (data.message || "Failed");
+                        statusEl.className = "log error";
+                    }
+                } catch (err) {
+                    statusEl.textContent = "Network error ❌";
+                    statusEl.className = "log error";
+                }
+            }
+        </script>
+    </body>
+</html>

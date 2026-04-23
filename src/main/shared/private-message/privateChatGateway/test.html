@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Socket.IO Test</title>
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+</head>
+<body>
+  <h1>Socket.IO Test</h1>
+  <button id="sendPing">Send Ping</button>
+
+  <script>
+    // Connect to your NestJS Gateway
+    const socket = io("http://localhost:5050", {
+      transports: ["websocket"],
+    });
+
+    // Connected event
+    socket.on("connect", () => {
+      console.log("✅ Connected to server:", socket.id);
+    });
+
+    // Custom connected message from server
+    socket.on("connected", (msg) => {
+      console.log("📨 Server says:", msg);
+    });
+
+    // Disconnect event
+    socket.on("disconnect", () => {
+      console.log("❌ Disconnected from server");
+    });
+
+    // Ping-Pong event
+    socket.on("pong", (data) => {
+      console.log("📬 Pong received from server:", data);
+    });
+
+    // Send ping on button click
+    document.getElementById("sendPing").addEventListener("click", () => {
+      console.log("➡ Sending ping...");
+      socket.emit("ping", { hello: "Shamim" });
+    });
+  </script>
+</body>
+</html>

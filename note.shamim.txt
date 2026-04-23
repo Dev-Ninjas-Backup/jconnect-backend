@@ -1,0 +1,8 @@
+users/getalluer -> GET  + search query (username)
+admin/dashboard-stats/top-sellers -> GET  + search query (username)
+payments/all-transaction-history -> GET  + search query (orderId)
+disputes -> GET  + search query (dispotchId/orderId)
+disputes/filter -> GET  + search query (dispotchId/orderId)
+
+
+Add search functionality to various endpoints and update DTOs for filtering

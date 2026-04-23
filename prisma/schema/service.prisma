@@ -1,0 +1,25 @@
+model Service {
+  id                         String      @id @default(uuid())
+  serviceName                String
+  serviceType                ServiceType
+  description                String?
+  price                      Float
+  currency                   String      @default("USD")
+  socialLogoForSocialService String?     @default("")
+  socialLogo                 SocialLogo? @default(SELECT)
+  creatorId                  String
+  creator                    User        @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  isPost    Boolean  @default(false)
+  isCustom  Boolean  @default(false)
+
+  serviceRequests ServiceRequest[]
+  payments        Payment[]
+  buyServices     BuyService[]
+  orders          Order[]
+  privateMessages PrivateMessage[]
+
+  @@map("services")
+}
