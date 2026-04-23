@@ -1,0 +1,12 @@
+model Follow {
+  id          String @id @default(uuid())
+  followerId  String
+  followingId String
+
+  followers User @relation("following", fields: [followerId], references: [id], onDelete: Cascade)
+  following User @relation("followers", fields: [followingId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([followerId, followingId])
+}

@@ -1,0 +1,45 @@
+model Payment {
+  id            String        @id @default(uuid())
+  sessionId     String        @unique
+  transactionId String?
+  amount        Int?
+  currency      String
+  status        PaymentStatus @default(PENDING)
+  paymentMethod String        @default("STRIPE")
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  // ----------- Relations ----------------------
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  serviceId String
+  service   Service @relation(fields: [serviceId], references: [id])
+
+  buyServices BuyService[] @relation("PaymentToBuyServices") 
+
+  @@map("payments")
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  CANCELLED
+}
+
+model BuyService {
+  id        String   @id @default(uuid())
+  buyerId   String
+  sellerId  String
+  serviceId String
+  paymentId String
+  amount    Int
+  status    String   @default("SUCCESS")
+  createdAt DateTime @default(now())
+
+  // ---------- Relations ----------
+  buyer   User    @relation("Buyer", fields: [buyerId], references: [id], onDelete: Cascade)
+  seller  User    @relation("Seller", fields: [sellerId], references: [id], onDelete: Cascade)
+  service Service @relation(fields: [serviceId], references: [id])
+  payment Payment @relation("PaymentToBuyServices", fields: [paymentId], references: [id])
+}

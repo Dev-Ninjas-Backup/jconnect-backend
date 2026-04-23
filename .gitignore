@@ -1,0 +1,119 @@
+# compiled output
+/dist
+/node_modules
+/build
+# Logs
+logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# OS
+.DS_Store
+
+# Tests
+/coverage
+/.nyc_output
+
+# IDEs and editors
+/.idea
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
+
+# IDE - VSCode
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# dotenv environment variable files
+.env.development.local
+.env.test.local
+.env.production.local
+.env.local
+.env
+
+# temp directory
+.temp
+.tmp
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Diagnostic reports (https://nodejs.org/api/report.html)
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+
+/generated/prisma
+
+logs
+data
+.pnpm-store
+.env
+.env
+
+
+package-lock.json
+.env.keys
+
+
+cicdpipe.pem
+jdadzok.pem
+
+# prisma/migrations
+# */migrations
+# ./prisma/migrations
+# .env
+
+jdadzok deploy.pem
+nginx
+.env.production
+sajib.pem
+jdadzok_server.pem
+*.pem
+/generated/prisma
+
+/generated/prisma
+*.secret
+# Deployment files
+.env.production
+.env
+*.pem
+*.key
+*.secret
+deploy_key*
+backups/
+logs/
+prisma/generated
+
+# Deployment files
+.env.production
+.env
+*.pem
+*.key
+*.secret
+deploy_key*
+backups/
+logs/
+
+# Deployment files
+.env.production
+.env
+*.pem
+*.key
+*.secret
+deploy_key*
+backups/
+logs/
+prisma/generator/
+# prisma/migrations/

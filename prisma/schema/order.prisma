@@ -1,0 +1,44 @@
+enum OrderStatus {
+  PENDING
+  IN_PROGRESS
+  PROOF_SUBMITTED
+  CANCELLED
+  RELEASED
+}
+
+model Order {
+  id                   String      @id @default(uuid())
+  orderCode            String      @unique
+  amount               Int
+  seller_amount        Int         @default(0)
+  PlatfromRevinue      Int         @default(0)
+  stripeFee            Int         @default(0)
+  status               OrderStatus @default(PENDING)
+  buyerId              String
+  sessionId            String?     @unique() // Stripe Checkout Session ID
+  sellerId             String
+  sellerIdStripe       String?
+  serviceId            String
+  paymentIntentId      String?     @unique // Stripe Payment Intent ID
+  buyerPay             Int         @default(0)
+  platformFee          Int
+  platformFee_percents Int         @default(0)
+  deliveryDate         DateTime?
+  createdAt            DateTime    @default(now())
+  updatedAt            DateTime    @updatedAt
+  disposts             Dispute[]
+  // For Escrow Manual Release
+  isReleased           Boolean     @default(false)
+  releasedAt           DateTime?
+
+  //                   Proof
+
+  proofUrl               String[]
+  proofSubmittedAt       DateTime @updatedAt
+  isCancalProofSubmitted Boolean  @default(false)
+
+  //                   Relations
+  buyer   User    @relation("OrderBuyer", fields: [buyerId], references: [id], onDelete: Cascade)
+  seller  User    @relation("OrderSeller", fields: [sellerId], references: [id], onDelete: Cascade)
+  service Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+}

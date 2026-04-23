@@ -1,0 +1,41 @@
+{
+    "compilerOptions": {
+        "module": "nodenext",
+        "moduleResolution": "nodenext",
+        "resolvePackageJsonExports": true,
+        "esModuleInterop": true,
+        "isolatedModules": true,
+        "declaration": true,
+        "removeComments": true,
+        "emitDecoratorMetadata": true,
+        "experimentalDecorators": true,
+        "allowSyntheticDefaultImports": true,
+        "target": "ES2023",
+        "sourceMap": true,
+        "outDir": "./dist",
+        "baseUrl": "./",
+        "incremental": true,
+        "skipLibCheck": true,
+        "strictNullChecks": true,
+        "forceConsistentCasingInFileNames": true,
+        "noImplicitAny": false,
+        "strictBindCallApply": false,
+        "noFallthroughCasesInSwitch": false,
+        "paths": {
+            "@type/*": ["src/@types/*"],
+            "@metadata/*": ["src/metadata/*"],
+            "@common/*": ["src/common/*"],
+            "@config/*": ["src/configs/*"],
+            "@constant/*": ["src/constants/*"],
+            "@global/*": ["src/global/*"],
+            "@lib/*": ["src/libs/*"],
+            "@main/*": ["src/main/*"],
+            "@script/*": ["src/scripts/*"],
+            "@service/*": ["src/services/*"],
+            "@util/*": ["src/utils/*"],
+            "@s3/*": ["src/s3/*"]
+        }
+    },
+    "include": ["src", "prisma/seeds/constants/index.ts"],
+    "exclude": ["node_modules", "test", "dist", "**/*spec.ts", "generated", "prisma"]
+}

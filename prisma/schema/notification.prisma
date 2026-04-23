@@ -1,0 +1,62 @@
+model Notification {
+  id String @id @default(uuid())
+
+  // User receiving notification
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  title    String
+  message  String  @db.Text
+  entityId String?
+  read     Boolean @default(false)
+
+  // Additional data as JSON
+  metadata  Json?
+  users     UserNotification[]
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+
+  @@index([userId])
+  @@index([read])
+  @@index([createdAt])
+  @@map("notifications")
+}
+
+model UserNotification {
+  id String @id @default(uuid())
+
+  user           User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId         String
+  type           NotificationType?
+  notification   Notification      @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  notificationId String
+
+  read Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  @@unique([userId, notificationId])
+}
+
+enum NotificationType {
+  Service
+  Payment
+  UserRegistration
+  Inquiry
+  UploadProof
+  PaymentReminder
+  follow
+  UPLOAD_PROOF
+  SERVICE_REQUEST_ACCEPTED
+  SERVICE_REQUEST_REJECTED
+  SERVICE_REQUEST_CANCELLED
+  PAYMENT_SUCCESSFUL
+  PAYMENT_FAILED
+  INQUIRY_RESPONSE
+  REVIEW_RECEIVED
+  POST_LIKED
+  POST_COMMENTED
+  POST_SHARED
+  POST_REPLIED
+}

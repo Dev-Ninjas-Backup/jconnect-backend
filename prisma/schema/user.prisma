@@ -1,0 +1,105 @@
+model User {
+  id                     String                 @id @default(uuid())
+  full_name              String
+  email                  String                 @unique
+  username               String?                @unique
+  profilePhoto           String?
+  phone                  String?                @unique
+  password               String
+  pinCode                Int?
+  otp                    String?
+  googleId               String?                @unique
+  emailOtp               Int?
+  otpExpiresAt           DateTime?
+  isVerified             Boolean                @default(false)
+  is_terms_agreed        Boolean                @default(false)
+  isLogin                Boolean                @default(false)
+  isDeleted              Boolean                @default(false)
+  isActive               Boolean                @default(true)
+  login_attempts         Int?                   @default(0)
+  withdrawn_amount       Int?                   @default(0)
+  // OTP sent to phone for phone verification
+  phoneOtp               Int?
+  phoneOtpExpiresAt      DateTime?
+  phoneVerified          Boolean                @default(false)
+  last_login_at          DateTime?
+  created_at             DateTime               @default(now())
+  updated_at             DateTime               @updatedAt
+  token_expires_at       DateTime?
+  role                   Role                   @default(ARTIST)
+  validation_type        ValidationType?        @default(EMAIL)
+  auth_provider          AuthProvider?
+  stripeAccountId        String?
+  sellerIDStripe         String?
+  customerIdStripe       String?
+  location               String?                @default("")
+  fcmToken               String?                @default("")
+  hashTags               String[]               @default([])
+  // Relation to Service Model 
+  profile                Profile?
+  serviceRequests        ServiceRequest[]
+  services               Service[]
+  devices                Device[]
+  LiveChatsCreated       LiveChat[]             @relation("LiveChatCreator")
+  chatParticipations     LiveChatParticipant[]
+  liveMessages           LiveMessage[]
+  liveMessageReads       LiveMessageRead[]
+  Payments               Payment[]
+  // Custom Service Requests relations
+  customRequestsMade     CustomServiceRequest[] @relation("BuyerCustomRequests")
+  customRequestsReceived CustomServiceRequest[] @relation("TargetedCustomRequests")
+  //  Buyer/Seller relation with BuyService
+  buyServicesAsBuyer     BuyService[]           @relation("Buyer")
+  buyServicesAsSeller    BuyService[]           @relation("Seller")
+  Buyer                  SocialServiceRequest[] @relation("SocialRequestBuyer")
+  Artist                 SocialServiceRequest[] @relation("SocialRequestRequester")
+  socialServices         SocialService[]
+  ReviewsGiven           Review[]               @relation("ReviewsGiven")
+  ReviewsReceived        Review[]               @relation("ReviewsReceived")
+
+  // ------message relation---
+  privateConversation1 PrivateConversation[]  @relation("User1Conversations")
+  privateConversation2 PrivateConversation[]  @relation("User2Conversations")
+  privateMessage       PrivateMessage[]
+  privateMessageStatus PrivateMessageStatus[]
+
+  // Support system relations
+  supportChats        SupportChat[]
+  supportChatsAsAdmin SupportChat[]        @relation("SupportChatAdmin")
+  supportMessages     SupportMessage[]
+  // Notification relations
+  notifications       Notification[]
+  userNotifications   UserNotification[]
+  notificationToggles NotificationToggle[]
+
+  orders_buyer  Order[]         @relation("OrderBuyer")
+  orders_seller Order[]         @relation("OrderSeller")
+  Withdraws     Withdrawal[]
+  paymentMethod PaymentMethod[]
+  Disputes      Dispute[]
+
+  follwers  Follow[] @relation("followers")
+  following Follow[] @relation("following")
+
+  highlights Highlight[]
+
+  @@map("users")
+}
+
+model Device {
+  id             String   @id @default(uuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  browser        String?
+  browserVersion String?
+  os             String?
+  osVersion      String?
+  deviceType     String?
+  deviceModel    String?
+  ipAddress      String?
+  lastUsedAt     DateTime @default(now())
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@map("devices")
+}

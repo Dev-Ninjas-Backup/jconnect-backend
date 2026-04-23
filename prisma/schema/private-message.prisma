@@ -1,0 +1,56 @@
+model PrivateConversation {
+  id      String @id @default(uuid())
+  user1Id String
+  user2Id String
+
+  user1 User @relation("User1Conversations", fields: [user1Id], references: [id], onDelete: Cascade)
+  user2 User @relation("User2Conversations", fields: [user2Id], references: [id], onDelete: Cascade)
+
+  lastMessageId String?
+  lastMessage   PrivateMessage? @relation("PrivateLastMessage", fields: [lastMessageId], references: [id], onDelete: SetNull)
+
+  messages  PrivateMessage[]
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  @@unique([user1Id, user2Id])
+}
+
+model PrivateMessage {
+  id                 String                 @id @default(uuid())
+  content            String
+  statuses           PrivateMessageStatus[]
+  isRead             Boolean                @default(false)
+  files              String[]
+  PrivateLastMessage PrivateConversation[]  @relation("PrivateLastMessage")
+  conversationId     String
+  conversation       PrivateConversation    @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderId           String
+  sender             User                   @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  serviceId          String?
+  service            Service?               @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  serviceRequestId   String?
+  serviceRequest     ServiceRequest?        @relation(fields: [serviceRequestId], references: [id], onDelete: SetNull)
+  createdAt          DateTime               @default(now())
+
+  // back relation for last message
+}
+
+model PrivateMessageStatus {
+  id        String                @id @default(uuid())
+  messageId String
+  userId    String
+  status    MessageDeliveryStatus
+  updatedAt DateTime              @updatedAt
+
+  message PrivateMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId])
+}
+
+enum MessageDeliveryStatus {
+  SENT
+  DELIVERED
+  READ
+}

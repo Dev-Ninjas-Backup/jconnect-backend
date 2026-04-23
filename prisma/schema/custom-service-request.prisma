@@ -1,0 +1,35 @@
+enum CustomServiceStatus {
+  PENDING
+  QUOTED
+  ACCEPTED
+  REJECTED
+  COMPLETED
+}
+
+model CustomServiceRequest {
+  id String @id @default(uuid())
+
+  // Buyer relation
+  buyerId String
+  buyer   User   @relation(name: "BuyerCustomRequests", fields: [buyerId], references: [id], onDelete: Cascade)
+
+  // Target creator relation
+  targetCreatorId String?
+  targetCreator   User?   @relation(name: "TargetedCustomRequests", fields: [targetCreatorId], references: [id], onDelete: Cascade)
+
+  serviceName           String
+  description           String
+  budgetRangeMin        Float?
+  budgetRangeMax        Float?
+  preferredDeliveryDate DateTime?
+  uploadedFileUrl       String?
+  status                CustomServiceStatus @default(PENDING)
+  creatorQuotePrice     Float?
+  creatorQuoteExpires   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([buyerId])
+  @@index([targetCreatorId])
+}

@@ -1,0 +1,44 @@
+// ---------------- SUPPORT CHAT MODELS ----------------
+
+model SupportChat {
+  id        String           @id @default(uuid())
+  userId    String
+  user      User             @relation(fields: [userId], references: [id])
+  adminId   String?
+  admin     User?            @relation("SupportChatAdmin", fields: [adminId], references: [id])
+  subject   String?
+  status    SupportStatus    @default(OPEN)
+  priority  SupportPriority  @default(MEDIUM)
+  messages  SupportMessage[]
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  @@map("support_chats")
+}
+
+model SupportMessage {
+  id        String      @id @default(uuid())
+  chatId    String
+  chat      SupportChat @relation(fields: [chatId], references: [id])
+  senderId  String
+  sender    User        @relation(fields: [senderId], references: [id])
+  content   String
+  isAdmin   Boolean     @default(false)
+  isRead    Boolean     @default(false)
+  createdAt DateTime    @default(now())
+
+  @@map("support_messages")
+}
+
+enum SupportStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum SupportPriority {
+  LOW
+  MEDIUM
+  HIGH
+}

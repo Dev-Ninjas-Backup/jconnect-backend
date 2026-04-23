@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="bn">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Add Payment Method (SetupIntent)</title>
+        <script src="https://js.stripe.com/v3/"></script>
+        <style>
+            body {
+                font-family: sans-serif;
+                padding: 20px;
+                max-width: 600px;
+                margin: auto;
+            }
+            #card-element {
+                padding: 12px;
+                border: 1px solid #ccc;
+                border-radius: 6px;
+                margin-top: 8px;
+            }
+            button {
+                margin-top: 12px;
+                padding: 10px 14px;
+                border: none;
+                border-radius: 6px;
+                background: #1f6feb;
+                color: white;
+                cursor: pointer;
+            }
+            .log {
+                margin-top: 12px;
+                min-height: 30px;
+                padding: 8px;
+                border-radius: 6px;
+                background: #f1f5f9;
+            }
+            .success {
+                background: #ecfdf5;
+                color: #065f46;
+                border: 1px solid #bbf7d0;
+            }
+            .error {
+                background: #fff1f2;
+                color: #991b1b;
+                border: 1px solid #fecaca;
+            }
+        </style>
+    </head>
+    <body>
+        <h2>Add Card (Stripe SetupIntent)</h2>
+
+        <label>Auth Token (Bearer)</label>
+        <input
+            id="authToken"
+            placeholder="Bearer <token>"
+            style="width: 100%; padding: 8px; margin-top: 6px"
+        />
+
+        <label>Customer Name</label>
+        <input
+            id="name"
+            placeholder="John Doe"
+            style="width: 100%; padding: 8px; margin-top: 6px"
+        />
+
+        <div id="card-element"></div>
+        <button id="submit">Add Card</button>
+
+        <div id="status" class="log">Ready.</div>
+
+        <script>
+            const stripe = Stripe(
+                "pk_test_WQBTIEi74MXos7xITb9OBdpI00GnoBrHFC",
+            );
+            const elements = stripe.elements();
+            const cardElement = elements.create("card");
+            cardElement.mount("#card-element");
+
+            const statusEl = document.getElementById("status");
+
+            document.getElementById("submit").addEventListener("click", async () => {
+                statusEl.textContent = "Creating SetupIntent...";
+                const auth = document.getElementById("authToken").value.trim();
+                const name = document.getElementById("name").value.trim();
+
+                if (!auth) {
+                    statusEl.textContent = "Auth token required";
+                    return;
+                }
+                //  const baseURL = "https://jconnect-server.saikat.com.bd"
+                // const baseURL = "http://localhost:5050"
+                const baseURL = "https://api.theconnectapp.net"
+                // 1️⃣ Create SetupIntent
+                const res1 = await fetch(`${baseURL}/payments/create-setup-intent`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", Authorization: auth },
+                    body: JSON.stringify({}),
+                });
+                const data1 = await res1.json();
+                const client_secret = data1.client_secret;
+                if (!client_secret) {
+                    statusEl.textContent = "Failed to get client_secret";
+                    return;
+                }
+
+                // 2️⃣ Create card token with Stripe.js
+                statusEl.textContent = "Creating card token...";
+                const { token, error: tokenError } = await stripe.createToken(cardElement, {
+                    name,
+                });
+                if (tokenError) {
+                    statusEl.textContent = "Token error: " + tokenError.message;
+                    statusEl.className = "log error";
+                    return;
+                }
+
+                // 3️⃣ Send client_secret + token to backend for confirm
+                statusEl.textContent = "Confirming SetupIntent via backend...";
+                const res2 = await fetch(`${baseURL}/payments/confirm-setup-intent`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", Authorization: auth },
+                    body: JSON.stringify({ clientSecret: client_secret, token: token.id }),
+                });
+                const data2 = await res2.json();
+
+                if (res2.ok) {
+                    statusEl.textContent =
+                        "Success! Payment method added: " + data2.paymentMethodId;
+                    statusEl.className = "log success";
+                } else {
+                    statusEl.textContent = "Error: " + (data2.message || "Unknown");
+                    statusEl.className = "log error";
+                }
+            });
+        </script>
+    </body>
+</html>

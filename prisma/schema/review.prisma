@@ -1,0 +1,24 @@
+model Review {
+  id String @id @default(uuid())
+
+  // 1. Reviewer/Buyer (The user who is giving the rating/review)
+  reviewerId String
+  reviewer   User   @relation("ReviewsGiven", fields: [reviewerId], references: [id], onDelete: Cascade)
+
+  // 2. Artist/Target (The user/artist who is receiving the rating/review)
+  artistId String
+  artist   User   @relation("ReviewsReceived", fields: [artistId], references: [id], onDelete: Cascade)
+
+  // Star rating (1 to 5)
+  rating Int
+
+  // The text content of the review
+  reviewText String? @default("")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Ensures one reviewer can only review one artist once
+  @@unique([reviewerId, artistId])
+  @@map("reviews")
+}
