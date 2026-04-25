@@ -261,6 +261,17 @@ export class UsersController {
 
     @ApiBearerAuth()
     @ValidateUser()
+    @Delete("me/highlights/:highlightId")
+    @ApiOperation({ summary: "Delete a specific highlight by ID" })
+    @ApiResponse({ status: 200, description: "Highlight deleted successfully" })
+    @ApiResponse({ status: 403, description: "Not authorized to delete this highlight" })
+    @ApiResponse({ status: 404, description: "Highlight not found" })
+    deleteHighlight(@Param("highlightId") highlightId: string, @GetUser() user: any) {
+        return this.usersService.deleteHighlight(user.userId, highlightId);
+    }
+
+    @ApiBearerAuth()
+    @ValidateUser()
     @Get("artist")
     @ApiOperation({ summary: "Get all artists (filterable, searchable, paginated)" })
     @ApiQuery({ name: "page", required: false, example: 1 })
@@ -268,6 +279,42 @@ export class UsersController {
     @ApiQuery({ name: "filter", required: false, example: "top-rated" })
     @ApiQuery({ name: "search", required: false, example: "" })
     @ApiQuery({ name: "username", required: false, example: "john_doe" })
+    @ApiResponse({
+        status: 200,
+        description: "List of artists with their highlights",
+        schema: {
+            type: "object",
+            properties: {
+                total: { type: "number" },
+                currentPage: { type: "number" },
+                totalPages: { type: "number" },
+                data: {
+                    type: "array",
+                    items: {
+                        type: "object",
+                        properties: {
+                            id: { type: "string" },
+                            full_name: { type: "string" },
+                            username: { type: "string" },
+                            profilePhoto: { type: "string" },
+                            highlights: {
+                                type: "array",
+                                items: {
+                                    type: "object",
+                                    properties: {
+                                        id: { type: "string" },
+                                        userId: { type: "string" },
+                                        fileLink: { type: "string" },
+                                        createdAt: { type: "string", format: "date-time" },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+        },
+    })
     findAllArtist(@Query() query: FindArtistDto, @GetUser() user: any) {
         return this.usersService.findAllArtist(query, user);
     }
@@ -305,7 +352,35 @@ export class UsersController {
     @ValidateUser()
     @Get(":id")
     @ApiOperation({ summary: "Get user by ID access all user" })
-    @ApiResponse({ status: 200, description: "User found" })
+    @ApiResponse({
+        status: 200,
+        description: "User found",
+        schema: {
+            type: "object",
+            properties: {
+                id: { type: "string" },
+                full_name: { type: "string" },
+                username: { type: "string" },
+                profilePhoto: { type: "string" },
+                highlights: {
+                    type: "array",
+                    items: {
+                        type: "object",
+                        properties: {
+                            id: { type: "string" },
+                            userId: { type: "string" },
+                            fileLink: { type: "string" },
+                            createdAt: { type: "string", format: "date-time" },
+                        },
+                    },
+                },
+                averageRating: { type: "number" },
+                totalReviews: { type: "number" },
+                followingCount: { type: "number" },
+                followerCount: { type: "number" },
+            },
+        },
+    })
     @ApiResponse({ status: 404, description: "User not found" })
     findOne(@Param("id") id: string, @GetUser("userId") currentUserId: string) {
         return this.usersService.findOne(id, currentUserId);

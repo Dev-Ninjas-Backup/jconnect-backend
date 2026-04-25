@@ -1,4 +1,4 @@
-import { HttpException, Injectable, NotFoundException } from "@nestjs/common";
+import { ForbiddenException, HttpException, Injectable, NotFoundException } from "@nestjs/common";
 
 import { HandleError } from "@common/error/handle-error.decorator";
 import { AwsService } from "@main/aws/aws.service";
@@ -946,6 +946,23 @@ export class UsersService {
             isActive: updatedUser.isActive,
             isVerified: updatedUser.isVerified,
             username: updatedUser.username,
+        };
+    }
+
+    async deleteHighlight(userId: string, highlightId: string) {
+        const highlight = await this.prisma.highlight.findUnique({
+            where: { id: highlightId },
+        });
+
+        if (!highlight) throw new NotFoundException("Highlight not found");
+        if (highlight.userId !== userId)
+            throw new ForbiddenException("You are not authorized to delete this highlight");
+
+        await this.prisma.highlight.delete({ where: { id: highlightId } });
+
+        return {
+            success: true,
+            message: "Highlight deleted successfully",
         };
     }
 
