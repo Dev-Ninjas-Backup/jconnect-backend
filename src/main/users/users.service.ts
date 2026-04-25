@@ -1,4 +1,4 @@
-import { HttpException, Injectable, NotFoundException } from "@nestjs/common";
+import { ForbiddenException, HttpException, Injectable, NotFoundException } from "@nestjs/common";
 
 import { HandleError } from "@common/error/handle-error.decorator";
 import { AwsService } from "@main/aws/aws.service";
@@ -20,7 +20,7 @@ export class UsersService {
         private readonly eventEmitter: EventEmitter2,
         private readonly firebaseNotificationService: FirebaseNotificationService,
         private readonly awsService: AwsService,
-    ) {}
+    ) { }
 
     @HandleError("Failed to create user", "Create User")
     async create(Userdata: CreateUserDto) {
@@ -596,12 +596,12 @@ export class UsersService {
                 const avgA =
                     a.ReviewsReceived.length > 0
                         ? a.ReviewsReceived.reduce((sum: number, r: any) => sum + r.rating, 0) /
-                          a.ReviewsReceived.length
+                        a.ReviewsReceived.length
                         : 0;
                 const avgB =
                     b.ReviewsReceived.length > 0
                         ? b.ReviewsReceived.reduce((sum: number, r: any) => sum + r.rating, 0) /
-                          b.ReviewsReceived.length
+                        b.ReviewsReceived.length
                         : 0;
                 return avgB - avgA;
             });
@@ -862,7 +862,7 @@ export class UsersService {
                         messagePreview:
                             inquiryMessage ||
                             "I like your profile and I wanna buy your service - " +
-                                currentUser.username,
+                            currentUser.username,
                         conversationId: `inquiry_${currentUser.id}_${user.id}`,
                         recipients: [{ id: user.id, email: user.email }],
                     },
@@ -946,6 +946,23 @@ export class UsersService {
             isActive: updatedUser.isActive,
             isVerified: updatedUser.isVerified,
             username: updatedUser.username,
+        };
+    }
+
+    async deleteHighlight(userId: string, highlightId: string) {
+        const highlight = await this.prisma.highlight.findUnique({
+            where: { id: highlightId },
+        });
+
+        if (!highlight) throw new NotFoundException("Highlight not found");
+        if (highlight.userId !== userId)
+            throw new ForbiddenException("You are not authorized to delete this highlight");
+
+        await this.prisma.highlight.delete({ where: { id: highlightId } });
+
+        return {
+            success: true,
+            message: "Highlight deleted successfully",
         };
     }
 
