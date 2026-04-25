@@ -669,6 +669,9 @@ export class UsersService {
             where: { id },
             omit: { password: true },
             include: {
+                highlights: {
+                    orderBy: { createdAt: "desc" },
+                },
                 services: {
                     orderBy: { createdAt: "desc" },
                 },
