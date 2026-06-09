@@ -7,7 +7,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install deps
-RUN npm i -g pnpm@latest && pnpm i 
+RUN npm ci
 
 # Copy prisma folder
 COPY prisma ./prisma
@@ -17,10 +17,10 @@ COPY prisma.config.ts ./
 COPY . .
 
 # Generate Prisma client
-RUN pnpm prisma:generate
+RUN npm run prisma:generate
 
 # Build the app
-RUN pnpm build
+RUN npm run build
 
 # Stage 2: Run
 FROM node:20-alpine
