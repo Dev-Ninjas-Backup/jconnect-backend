@@ -195,6 +195,30 @@ export class AppController {
     .tl.inf { color: #60a5fa; }
     .tl.wrn { color: var(--accent-gold); }
 
+    .developer-card {
+      display: flex; align-items: center; gap: 1rem;
+      background: var(--card-bg); backdrop-filter: blur(16px);
+      border: 1px solid var(--card-border); border-radius: 1rem;
+      padding: 1.1rem 1.5rem;
+      box-shadow: 0 20px 40px -15px rgba(0,0,0,.6);
+    }
+    .dev-avatar {
+      width: 44px; height: 44px; border-radius: 50%;
+      background: linear-gradient(135deg, #d4a359 0%, #b8863e 100%);
+      display: flex; align-items: center; justify-content: center;
+      font-family: 'Space Grotesk', sans-serif; font-size: 0.85rem;
+      font-weight: 700; color: #07090e; flex-shrink: 0;
+    }
+    .dev-info { display: flex; flex-direction: column; gap: 0.15rem; }
+    .dev-label { font-size: 0.62rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .06em; }
+    .dev-name { font-family: 'Space Grotesk', sans-serif; font-size: 0.95rem; font-weight: 700; color: #fff; }
+    .dev-link {
+      display: inline-flex; align-items: center; gap: 0.3rem;
+      font-size: 0.75rem; color: var(--accent-gold); text-decoration: none;
+      transition: opacity .2s;
+    }
+    .dev-link:hover { opacity: 0.8; }
+
     .footer { font-size: .72rem; color: var(--text-muted); text-align: center; margin-top: 0.5rem; letter-spacing: .03em; }
   </style>
 </head>
@@ -268,6 +292,18 @@ export class AppController {
       <div class="tl ok">[${fmtTime(6)}] [NestApplication] Server listening on port ${process.env.PORT ?? 8080}</div>
     </div>
 
+    <div class="developer-card">
+      <div class="dev-avatar">MS</div>
+      <div class="dev-info">
+        <span class="dev-label">Backend Developer</span>
+        <span class="dev-name">Mirza Saikat Ahmmed</span>
+        <a class="dev-link" href="https://saikat.com.bd" target="_blank" rel="noopener">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+          saikat.com.bd
+        </a>
+      </div>
+    </div>
+
     <div class="footer">&copy; 2026 DaConnect &mdash; All rights reserved</div>
   </div>
 </body>
@@ -282,6 +318,10 @@ export class AppController {
             uptime: process.uptime(),
             memoryUsage: process.memoryUsage(),
             nodeVersion: process.version,
+            developer: {
+                name: "Mirza Saikat Ahmmed",
+                website: "https://saikat.com.bd",
+            },
         };
     }
 }
