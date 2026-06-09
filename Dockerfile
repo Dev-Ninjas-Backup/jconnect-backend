@@ -7,7 +7,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install deps
-RUN npm ci
+RUN npm install --ignore-scripts
 
 # Copy prisma folder
 COPY prisma ./prisma
@@ -19,8 +19,8 @@ COPY . .
 # Generate Prisma client
 RUN npm run prisma:generate
 
-# Build the app
-RUN npm run build
+# Build the app (increase heap for large TS projects)
+RUN NODE_OPTIONS="--max-old-space-size=4096" npm run build
 
 # Stage 2: Run
 FROM node:20-alpine
