@@ -1,0 +1,27 @@
+model RepostListing {
+  id            String         @id @default(uuid())
+  sellerId      String
+  seller        User           @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  platform      RepostPlatform
+  price         Float
+  followerCount Int?
+  description   String?
+  isActive      Boolean        @default(true)
+  isPaused      Boolean        @default(false)
+  isSpotlight   Boolean        @default(false)
+
+  // Analytics counters
+  totalPurchases     Int @default(0)
+  totalAccepts       Int @default(0)
+  totalProofs        Int @default(0)
+  totalRedos         Int @default(0)
+  totalAutoReleases  Int @default(0)
+  totalCompleted     Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  repostOrders RepostOrder[]
+
+  @@map("repost_listings")
+}

@@ -1,0 +1,90 @@
+import { GetUser, ValidateArtist, ValidateUser } from "@common/jwt/jwt.decorator";
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from "@nestjs/common";
+import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from "@nestjs/swagger";
+import { RepostPlatform } from "@prisma/client";
+import {
+    CreateRepostListingDto,
+    ToggleListingDto,
+    UpdateRepostListingDto,
+} from "./dto/repost-listing.dto";
+import { RepostListingService } from "./repost-listing.service";
+
+@ApiTags("Repost Listings")
+@Controller("repost-listings")
+export class RepostListingController {
+    constructor(private readonly service: RepostListingService) {}
+
+    @ApiBearerAuth()
+    @ValidateArtist()
+    @Post()
+    @ApiOperation({ summary: "Create a repost listing (Artist only)" })
+    create(@GetUser() user: any, @Body() dto: CreateRepostListingDto) {
+        return this.service.create(user.userId, dto);
+    }
+
+    @ApiBearerAuth()
+    @ValidateUser()
+    @Get()
+    @ApiOperation({ summary: "Get all active repost listings (marketplace)" })
+    @ApiQuery({ name: "platform", enum: RepostPlatform, required: false })
+    @ApiQuery({ name: "spotlight", type: Boolean, required: false })
+    findAll(@Query("platform") platform?: RepostPlatform, @Query("spotlight") spotlight?: string) {
+        return this.service.findAll(platform, spotlight === "true");
+    }
+
+    @ApiBearerAuth()
+    @ValidateUser()
+    @Get("spotlight")
+    @ApiOperation({ summary: "Get $1 Repost Spotlight listings" })
+    getSpotlight() {
+        return this.service.getSpotlightListings();
+    }
+
+    @ApiBearerAuth()
+    @ValidateArtist()
+    @Get("my-listings")
+    @ApiOperation({ summary: "Get my repost listings" })
+    myListings(@GetUser() user: any) {
+        return this.service.findBySeller(user.userId);
+    }
+
+    @ApiBearerAuth()
+    @ValidateArtist()
+    @Get("dashboard")
+    @ApiOperation({ summary: "Seller dashboard: listings with order counts" })
+    dashboard(@GetUser() user: any) {
+        return this.service.getSellerDashboard(user.userId);
+    }
+
+    @ApiBearerAuth()
+    @ValidateUser()
+    @Get(":id")
+    @ApiOperation({ summary: "Get repost listing by ID" })
+    findOne(@Param("id") id: string) {
+        return this.service.findOne(id);
+    }
+
+    @ApiBearerAuth()
+    @ValidateArtist()
+    @Patch(":id")
+    @ApiOperation({ summary: "Update a repost listing" })
+    update(@Param("id") id: string, @GetUser() user: any, @Body() dto: UpdateRepostListingDto) {
+        return this.service.update(id, user.userId, dto);
+    }
+
+    @ApiBearerAuth()
+    @ValidateArtist()
+    @Patch(":id/toggle-pause")
+    @ApiOperation({ summary: "Pause or reactivate a listing" })
+    togglePause(@Param("id") id: string, @GetUser() user: any, @Body() dto: ToggleListingDto) {
+        return this.service.togglePause(id, user.userId, dto);
+    }
+
+    @ApiBearerAuth()
+    @ValidateArtist()
+    @Delete(":id")
+    @ApiOperation({ summary: "Delete a repost listing" })
+    remove(@Param("id") id: string, @GetUser() user: any) {
+        return this.service.remove(id, user.userId);
+    }
+}

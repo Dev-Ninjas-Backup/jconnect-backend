@@ -2,6 +2,7 @@ import { MiddlewareConsumer, Module, NestModule } from "@nestjs/common";
 import { ConfigModule, ConfigService } from "@nestjs/config";
 import { JwtModule } from "@nestjs/jwt";
 import { PassportModule } from "@nestjs/passport";
+import { ScheduleModule } from "@nestjs/schedule";
 import { ServeStaticModule } from "@nestjs/serve-static";
 import { join } from "path";
 import { AppController } from "./app.controller";
@@ -18,6 +19,8 @@ import { FollowFunctionModule } from "./main/follow-function/follow-function.mod
         ConfigModule.forRoot({
             isGlobal: true,
         }),
+
+        ScheduleModule.forRoot(),
 
         // CacheModule.register({
         //     isGlobal: true,

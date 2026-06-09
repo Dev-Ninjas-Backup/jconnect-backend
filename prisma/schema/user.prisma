@@ -35,7 +35,8 @@ model User {
   location               String?                @default("")
   fcmToken               String?                @default("")
   hashTags               String[]               @default([])
-  // Relation to Service Model 
+  isProfileVerified      Boolean                @default(false)
+  // Relation to Service Model
   profile                Profile?
   serviceRequests        ServiceRequest[]
   services               Service[]
@@ -82,6 +83,10 @@ model User {
   following Follow[] @relation("following")
 
   highlights Highlight[]
+
+  repostListings      RepostListing[]
+  repostOrdersBuyer   RepostOrder[]  @relation("RepostOrderBuyer")
+  repostOrdersSeller  RepostOrder[]  @relation("RepostOrderSeller")
 
   @@map("users")
 }

@@ -43,7 +43,7 @@ export class UsersController {
     constructor(
         private readonly usersService: UsersService,
         private awsservice: AwsService,
-    ) { }
+    ) {}
 
     @Get("check-username/:username")
     @ApiOperation({ summary: "Check if username is available" })
@@ -474,5 +474,27 @@ export class UsersController {
             message: "User role updated successfully",
             data: updatedUser,
         };
+    }
+
+    // ─────────── Profile Verification (Admin) ───────────
+
+    @ApiBearerAuth()
+    @ValidateAdmin()
+    @Get("admin/unverified-profiles")
+    @ApiOperation({ summary: "Admin: list all unverified user profiles" })
+    getUnverifiedProfiles() {
+        return this.usersService.getUnverifiedProfiles();
+    }
+
+    @ApiBearerAuth()
+    @ValidateAdmin()
+    @Patch("admin/verify-profile/:userId")
+    @ApiOperation({
+        summary: "Admin: approve or reject a user profile verification",
+        description: "Pass `approve=true` to grant verified badge, `approve=false` to reject.",
+    })
+    @ApiQuery({ name: "approve", type: Boolean, required: true })
+    verifyProfile(@Param("userId") userId: string, @Query("approve") approve: string) {
+        return this.usersService.verifyProfile(userId, approve === "true");
     }
 }

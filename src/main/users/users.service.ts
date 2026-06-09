@@ -20,7 +20,7 @@ export class UsersService {
         private readonly eventEmitter: EventEmitter2,
         private readonly firebaseNotificationService: FirebaseNotificationService,
         private readonly awsService: AwsService,
-    ) { }
+    ) {}
 
     @HandleError("Failed to create user", "Create User")
     async create(Userdata: CreateUserDto) {
@@ -596,12 +596,12 @@ export class UsersService {
                 const avgA =
                     a.ReviewsReceived.length > 0
                         ? a.ReviewsReceived.reduce((sum: number, r: any) => sum + r.rating, 0) /
-                        a.ReviewsReceived.length
+                          a.ReviewsReceived.length
                         : 0;
                 const avgB =
                     b.ReviewsReceived.length > 0
                         ? b.ReviewsReceived.reduce((sum: number, r: any) => sum + r.rating, 0) /
-                        b.ReviewsReceived.length
+                          b.ReviewsReceived.length
                         : 0;
                 return avgB - avgA;
             });
@@ -862,7 +862,7 @@ export class UsersService {
                         messagePreview:
                             inquiryMessage ||
                             "I like your profile and I wanna buy your service - " +
-                            currentUser.username,
+                                currentUser.username,
                         conversationId: `inquiry_${currentUser.id}_${user.id}`,
                         recipients: [{ id: user.id, email: user.email }],
                     },
@@ -971,13 +971,6 @@ export class UsersService {
         console.log(exists);
 
         if (!exists) throw new NotFoundException("User not found");
-        // if (exists?.isDeleted) throw new NotFoundException("User Already deleted");
-
-        // await this.prisma.user.update({
-        //     where: { id },
-        //     data: { isDeleted: true },
-        //     omit: { password: true },
-        // });
 
         await this.prisma.user.delete({ where: { id } });
 
@@ -985,5 +978,56 @@ export class UsersService {
             status: 200,
             message: "User deleted successfully",
         };
+    }
+
+    // ─────────── PROFILE VERIFICATION (Admin) ───────────
+    @HandleError("Failed to verify profile")
+    async verifyProfile(targetUserId: string, approve: boolean) {
+        const user = await this.prisma.user.findUnique({ where: { id: targetUserId } });
+        if (!user) throw new NotFoundException("User not found");
+
+        await this.prisma.user.update({
+            where: { id: targetUserId },
+            data: { isProfileVerified: approve },
+        });
+
+        const notifType = approve
+            ? "PROFILE_VERIFICATION_APPROVED"
+            : "PROFILE_VERIFICATION_REJECTED";
+        const title = approve ? "Profile Verified" : "Profile Verification Rejected";
+        const body = approve
+            ? "Congratulations! Your profile has been verified. Your verified badge is now visible."
+            : "Your profile verification request was not approved. Contact support for more information.";
+
+        await this.firebaseNotificationService.sendToUser(targetUserId, {
+            title,
+            body,
+            type: notifType as any,
+            data: { userId: targetUserId },
+        });
+
+        return {
+            success: true,
+            message: `Profile ${approve ? "verified" : "rejected"} successfully`,
+            isProfileVerified: approve,
+        };
+    }
+
+    @HandleError("Failed to list unverified profiles")
+    async getUnverifiedProfiles() {
+        return this.prisma.user.findMany({
+            where: { isProfileVerified: false, isActive: true, isDeleted: false },
+            select: {
+                id: true,
+                full_name: true,
+                username: true,
+                email: true,
+                profilePhoto: true,
+                role: true,
+                created_at: true,
+                isProfileVerified: true,
+            },
+            orderBy: { created_at: "desc" },
+        });
     }
 }

@@ -44,13 +44,14 @@ export class CreateSocialServiceRequestDto {
     @IsString()
     specialNotes?: string;
 
-    @ApiProperty({
-        example: ["image1.jpg", "video.mp4"],
-        description: "List of attached file names or URLs",
+    @ApiPropertyOptional({
+        description: "Attached file URLs (populated automatically from multipart upload)",
         type: [String],
     })
+    @IsOptional()
     @IsArray()
-    attachedFiles: string[];
+    @IsString({ each: true })
+    attachedFiles?: string[];
 
     @ApiProperty({ example: "buyer-uuid-123", description: "ID of the buyer (User ID)" })
     @IsString()

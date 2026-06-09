@@ -1,0 +1,59 @@
+model RepostOrder {
+  id        String @id @default(uuid())
+  orderCode String @unique
+
+  buyerId  String
+  buyer    User   @relation("RepostOrderBuyer", fields: [buyerId], references: [id], onDelete: Cascade)
+  sellerId String
+  seller   User   @relation("RepostOrderSeller", fields: [sellerId], references: [id], onDelete: Cascade)
+
+  listingId String
+  listing   RepostListing @relation(fields: [listingId], references: [id])
+
+  platform  RepostPlatform
+  timeframe RepostTimeframe
+  amount    Int
+  platformFee     Int         @default(0)
+  sellerAmount    Int         @default(0)
+
+  status RepostOrderStatus @default(NEW_REQUEST)
+
+  // Buyer's content to repost
+  contentUrl   String?
+  contentFiles String[]
+
+  // Countdown — starts at order creation
+  countdownEndsAt DateTime
+
+  // Proof
+  proofType        ProofType?
+  proofUrl         String?
+  proofFiles       String[]
+  proofSubmittedAt DateTime?
+
+  // Buyer review window (1 hour after proof submitted)
+  reviewWindowEndsAt DateTime?
+
+  // Redo window (30 min after redo requested)
+  redoWindowEndsAt DateTime?
+  redoCount        Int       @default(0)
+
+  // Escrow / Stripe
+  paymentIntentId String?
+  isReleased      Boolean   @default(false)
+  releasedAt      DateTime?
+
+  // Countdown alert tracking (avoid duplicate sends)
+  alert60Sent Boolean @default(false)
+  alert30Sent Boolean @default(false)
+  alert15Sent Boolean @default(false)
+  alert5Sent  Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([countdownEndsAt])
+  @@index([reviewWindowEndsAt])
+  @@map("repost_orders")
+}

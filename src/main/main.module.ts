@@ -7,13 +7,18 @@ import { DisputeModule } from "./dispotch/dispotch.module";
 import { OrdersModule } from "./order/order.module";
 import { PaymentsModule } from "./payments/payments.module";
 import { ProfileModule } from "./profile/profile.module";
+import { RepostListingModule } from "./repost-listing/repost-listing.module";
+import { RepostOrderModule } from "./repost-order/repost-order.module";
+import { RepostSchedulerModule } from "./repost-scheduler/repost-scheduler.module";
 import { ReviewModule } from "./review/review.module";
 import { ServiceRequestModule } from "./service-request/service-request.module";
 import { ServiceModule } from "./service/service.module";
-import { SharedModule } from "./shared/shared.module";
-import { UsersModule } from "./users/users.module";
 import { SettingsModule } from "./settings/settings.module";
+import { SharedModule } from "./shared/shared.module";
+import { SocialServiceModule } from "./social-service/social-service.module";
+import { SocialServiceRequestModule } from "./social-service-request/social-service-request.module";
 import { TestRoutesModule } from "./test-routes/test-routes.module";
+import { UsersModule } from "./users/users.module";
 
 @Module({
     imports: [
@@ -32,6 +37,13 @@ import { TestRoutesModule } from "./test-routes/test-routes.module";
         DisputeModule,
         SettingsModule,
         TestRoutesModule,
+        // Repost Marketplace
+        RepostListingModule,
+        RepostOrderModule,
+        RepostSchedulerModule,
+        // Social Service (previously hidden)
+        SocialServiceModule,
+        SocialServiceRequestModule,
     ],
 })
 export class MainModule {}

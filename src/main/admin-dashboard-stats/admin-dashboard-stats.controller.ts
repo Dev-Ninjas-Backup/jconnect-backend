@@ -83,7 +83,7 @@ export class AdminDashboardStatsController {
     @ValidateAdmin()
     @Get("user-activity-weekly")
     @ApiOperation({
-        summary: "Get active vs inactive user counts by day of the week (Placeholder Data)",
+        summary: "Get active vs inactive user counts by day of the week",
     })
     async getUserActivityWeekly() {
         try {

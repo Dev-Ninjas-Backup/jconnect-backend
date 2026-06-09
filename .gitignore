@@ -69,7 +69,7 @@ jdadzok.pem
 # prisma/migrations
 # */migrations
 # ./prisma/migrations
-# .env
+.env*
 
 jdadzok deploy.pem
 nginx

@@ -35,9 +35,13 @@ export class CreateSocialServiceDto {
     @IsString()
     specialNotes?: string;
 
-    @ApiPropertyOptional({ example: ["file1.jpg", "file2.png"], description: "Attached file URLs" })
+    @ApiPropertyOptional({
+        description: "Uploaded file URLs (populated automatically from multipart upload)",
+        type: [String],
+    })
     @IsOptional()
     @IsArray()
+    @IsString({ each: true })
     attachedFiles?: string[];
 
     @ApiPropertyOptional({ example: "Pending", description: "Status of the service" })
@@ -45,12 +49,13 @@ export class CreateSocialServiceDto {
     @IsString()
     status?: string;
 
-    @ApiProperty({
+    @ApiPropertyOptional({
         example: "a7f0a630-d8d1-4a1b-83b9-97e5b2bfc41a",
-        description: "Artist (User) ID (UUID)",
+        description: "Artist (User) ID — set automatically from JWT, do not send manually",
     })
+    @IsOptional()
     @IsString()
-    artistID: string;
+    artistID?: string;
 }
 
 export class UpdateSocialServiceDto extends PartialType(CreateSocialServiceDto) {}
