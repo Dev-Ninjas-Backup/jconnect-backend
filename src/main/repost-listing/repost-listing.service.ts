@@ -16,6 +16,11 @@ export class RepostListingService {
     ) {}
 
     async create(sellerId: string, dto: CreateRepostListingDto) {
+        const seller = await this.prisma.user.findUnique({
+            where: { id: sellerId },
+            select: { username: true, full_name: true },
+        });
+
         const listing = await this.prisma.repostListing.create({
             data: {
                 sellerId,
@@ -27,6 +32,7 @@ export class RepostListingService {
             },
         });
 
+        // Notify seller
         if (listing.isSpotlight) {
             await this.notifications.sendToUser(sellerId, {
                 title: "Listed in $1 Repost Spotlight!",
@@ -43,6 +49,27 @@ export class RepostListingService {
             });
         }
 
+        // Notify all followers of this seller
+        const followers = await this.prisma.follow.findMany({
+            where: { followingId: sellerId },
+            select: { followerId: true },
+        });
+
+        if (followers.length > 0) {
+            const handle = seller?.username ?? seller?.full_name ?? "Someone you follow";
+            const platformLabel = dto.platform.replace(/_/g, " ");
+            await Promise.all(
+                followers.map((f) =>
+                    this.notifications.sendToUser(f.followerId, {
+                        title: "New Repost Available",
+                        body: `@${handle} just listed a new ${platformLabel} repost.`,
+                        type: "FOLLOWED_SELLER_NEW_LISTING" as any,
+                        data: { listingId: listing.id, sellerId },
+                    }),
+                ),
+            );
+        }
+
         return listing;
     }
 
@@ -53,6 +80,37 @@ export class RepostListingService {
                 isPaused: false,
                 ...(platform && { platform }),
                 ...(spotlightOnly && { isSpotlight: true }),
+            },
+            include: {
+                seller: {
+                    select: {
+                        id: true,
+                        full_name: true,
+                        username: true,
+                        profilePhoto: true,
+                        isProfileVerified: true,
+                    },
+                },
+            },
+            orderBy: [{ isSpotlight: "desc" }, { createdAt: "desc" }],
+        });
+    }
+
+    async findByFollowing(buyerId: string) {
+        const following = await this.prisma.follow.findMany({
+            where: { followerId: buyerId },
+            select: { followingId: true },
+        });
+
+        if (following.length === 0) return [];
+
+        const sellerIds = following.map((f) => f.followingId);
+
+        return this.prisma.repostListing.findMany({
+            where: {
+                sellerId: { in: sellerIds },
+                isActive: true,
+                isPaused: false,
             },
             include: {
                 seller: {

@@ -6,8 +6,10 @@ import {
 } from "@nestjs/common";
 import { FirebaseNotificationService } from "@main/shared/notification/firebase-notification.service";
 import { RepostOrderStatus, RepostTimeframe } from "@prisma/client";
+import { randomUUID } from "crypto";
 import { PrismaService } from "src/lib/prisma/prisma.service";
 import { CreateRepostOrderDto, ReviewActionDto, SubmitProofDto } from "./dto/repost-order.dto";
+import { RepostOrderGateway } from "./repost-order.gateway";
 
 const TIMEFRAME_MS: Record<RepostTimeframe, number> = {
     THIRTY_MIN: 30 * 60 * 1000,
@@ -27,6 +29,7 @@ export class RepostOrderService {
     constructor(
         private prisma: PrismaService,
         private notifications: FirebaseNotificationService,
+        private gateway: RepostOrderGateway,
     ) {}
 
     // ─────────── CREATE ORDER ───────────
@@ -43,18 +46,19 @@ export class RepostOrderService {
 
         const now = new Date();
         const countdownEndsAt = new Date(now.getTime() + TIMEFRAME_MS[dto.timeframe]);
-        const platformFee = Math.round(dto.amount * PLATFORM_FEE_PCT);
-        const sellerAmount = dto.amount - platformFee;
+        const amount = 100; // fixed at $1 (100 cents)
+        const platformFee = Math.round(amount * PLATFORM_FEE_PCT);
+        const sellerAmount = amount - platformFee;
 
         const order = await this.prisma.repostOrder.create({
             data: {
-                orderCode: "RPO-" + Date.now(),
+                orderCode: "RPO-" + randomUUID().slice(0, 8).toUpperCase(),
                 buyerId,
                 sellerId: listing.sellerId,
                 listingId: dto.listingId,
-                platform: dto.platform,
+                platform: listing.platform,
                 timeframe: dto.timeframe,
-                amount: dto.amount,
+                amount,
                 platformFee,
                 sellerAmount,
                 countdownEndsAt,
@@ -91,6 +95,8 @@ export class RepostOrderService {
             }),
         ]);
 
+        this.gateway.emitOrderCreated(order);
+
         return order;
     }
 
@@ -121,6 +127,8 @@ export class RepostOrderService {
                     data: { orderId },
                 }),
             ]);
+
+            this.gateway.emitSellerRejected({ ...order, status: RepostOrderStatus.REJECTED });
             return updated;
         }
 
@@ -149,6 +157,7 @@ export class RepostOrderService {
             data: { totalAccepts: { increment: 1 } },
         });
 
+        this.gateway.emitSellerAccepted({ ...order, status: RepostOrderStatus.ACCEPTED });
         return updated;
     }
 
@@ -163,12 +172,8 @@ export class RepostOrderService {
         ) {
             throw new BadRequestException("Order is not in a state that accepts proof");
         }
-        if (
-            new Date() > order.countdownEndsAt &&
-            order.status !== RepostOrderStatus.REDO_REQUESTED
-        ) {
+        if (new Date() > order.countdownEndsAt && order.status !== RepostOrderStatus.REDO_REQUESTED)
             throw new BadRequestException("Countdown has expired");
-        }
         if (dto.proofType === "URL" && !dto.proofUrl)
             throw new BadRequestException("proofUrl is required when proofType is URL");
 
@@ -224,6 +229,7 @@ export class RepostOrderService {
             });
         }
 
+        this.gateway.emitProofSubmitted({ ...updated, reviewWindowEndsAt });
         return updated;
     }
 
@@ -253,10 +259,12 @@ export class RepostOrderService {
                 this.notifications.sendToUser(order.sellerId, {
                     title: "Proof Rejected",
                     body: "The buyer rejected your proof. The order has been refunded.",
-                    type: "REPOST_REDO_REQUESTED" as any,
+                    type: "ESCROW_REFUND_PROCESSED" as any,
                     data: { orderId },
                 }),
             ]);
+
+            this.gateway.emitOrderRefunded({ ...order, status: RepostOrderStatus.REFUNDED });
             return updated;
         }
 
@@ -274,21 +282,25 @@ export class RepostOrderService {
                 },
             });
 
-            await Promise.all([
-                this.notifications.sendToUser(order.sellerId, {
-                    title: "Redo Requested",
-                    body: "Buyer requested a redo. You have 30 minutes remaining.",
-                    type: "REPOST_REDO_REQUESTED" as any,
-                    data: { orderId },
-                }),
-            ]);
+            await this.notifications.sendToUser(order.sellerId, {
+                title: "Redo Requested",
+                body: "Buyer requested a redo. You have 30 minutes remaining.",
+                type: "REPOST_REDO_REQUESTED" as any,
+                data: { orderId },
+            });
+
+            this.gateway.emitRedoRequested({
+                ...order,
+                status: RepostOrderStatus.REDO_REQUESTED,
+                redoWindowEndsAt,
+            });
             return updated;
         }
 
         throw new BadRequestException("Invalid action. Use ACCEPT, REJECT, or REDO");
     }
 
-    // ─────────── AUTO RELEASE (called by scheduler) ───────────
+    // ─────────── ESCROW RELEASE (buyer accept / auto-release) ───────────
     async releaseEscrow(orderId: string, orderData?: any, trigger?: string) {
         const order = orderData ?? (await this.findOrderOrFail(orderId));
         const isAutoRelease = trigger === "auto_release";
@@ -337,6 +349,11 @@ export class RepostOrderService {
             }),
         ]);
 
+        this.gateway.emitOrderCompleted({
+            ...order,
+            status: RepostOrderStatus.COMPLETED,
+            isReleased: true,
+        });
         return updated;
     }
 

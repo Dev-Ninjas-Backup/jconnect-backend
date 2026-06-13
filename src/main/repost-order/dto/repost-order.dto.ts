@@ -1,34 +1,34 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
-import { ProofType, RepostPlatform, RepostTimeframe } from "@prisma/client";
-import { IsEnum, IsInt, IsOptional, IsString, Min } from "class-validator";
+import { ProofType, RepostTimeframe } from "@prisma/client";
+import { IsEnum, IsOptional, IsString, IsUrl } from "class-validator";
 
 export class CreateRepostOrderDto {
-    @ApiProperty({ example: "listing-uuid" })
+    @ApiProperty({ example: "listing-uuid", description: "Screen 1 — selected repost listing ID" })
     @IsString()
     listingId: string;
 
-    @ApiProperty({ enum: RepostPlatform })
-    @IsEnum(RepostPlatform)
-    platform: RepostPlatform;
+    @ApiProperty({
+        example: "https://instagram.com/p/abc123",
+        description: "Screen 2 — social media URL of the content to repost",
+    })
+    @IsUrl()
+    contentUrl: string;
 
-    @ApiProperty({ enum: RepostTimeframe, example: RepostTimeframe.ONE_HOUR })
+    @ApiProperty({
+        example: "pi_xxx",
+        description:
+            "Screen 3 — Stripe PaymentIntent ID created client-side after payment. Amount is derived from the listing price.",
+    })
+    @IsString()
+    paymentIntentId: string;
+
+    @ApiProperty({
+        enum: RepostTimeframe,
+        example: RepostTimeframe.ONE_HOUR,
+        description: "Screen 4 — how long the seller has to complete the repost",
+    })
     @IsEnum(RepostTimeframe)
     timeframe: RepostTimeframe;
-
-    @ApiProperty({ example: 500, description: "Amount in cents" })
-    @IsInt()
-    @Min(1)
-    amount: number;
-
-    @ApiPropertyOptional({ example: "https://instagram.com/p/abc123" })
-    @IsOptional()
-    @IsString()
-    contentUrl?: string;
-
-    @ApiPropertyOptional({ example: "pi_xxx", description: "Stripe PaymentIntent ID" })
-    @IsOptional()
-    @IsString()
-    paymentIntentId?: string;
 }
 
 export class SubmitProofDto {

@@ -1,4 +1,5 @@
 import { FirebaseNotificationService } from "@main/shared/notification/firebase-notification.service";
+import { RepostOrderGateway } from "@main/repost-order/repost-order.gateway";
 import { RepostOrderService } from "@main/repost-order/repost-order.service";
 import { Injectable, Logger } from "@nestjs/common";
 import { Cron, CronExpression } from "@nestjs/schedule";
@@ -13,14 +14,14 @@ export class RepostSchedulerService {
         private prisma: PrismaService,
         private notifications: FirebaseNotificationService,
         private repostOrderService: RepostOrderService,
+        private gateway: RepostOrderGateway,
     ) {}
 
-    // Runs every minute — sends countdown alerts and handles expirations
+    // ─────────── Countdown alerts + expiry ───────────
     @Cron(CronExpression.EVERY_MINUTE)
     async handleCountdownAlerts() {
         const now = new Date();
 
-        // Orders still in an active state waiting for seller proof
         const activeOrders = await this.prisma.repostOrder.findMany({
             where: {
                 status: {
@@ -39,43 +40,35 @@ export class RepostSchedulerService {
             const msLeft = order.countdownEndsAt.getTime() - now.getTime();
             const minLeft = Math.floor(msLeft / 60000);
 
-            // 60-minute alert
             if (minLeft <= 60 && minLeft > 59 && !order.alert60Sent) {
-                await this.sendCountdownAlert(order.id, order.sellerId, 60);
+                await this.sendCountdownAlert(order, 60);
                 await this.prisma.repostOrder.update({
                     where: { id: order.id },
                     data: { alert60Sent: true },
                 });
             }
-
-            // 30-minute alert
             if (minLeft <= 30 && minLeft > 29 && !order.alert30Sent) {
-                await this.sendCountdownAlert(order.id, order.sellerId, 30);
+                await this.sendCountdownAlert(order, 30);
                 await this.prisma.repostOrder.update({
                     where: { id: order.id },
                     data: { alert30Sent: true },
                 });
             }
-
-            // 15-minute alert
             if (minLeft <= 15 && minLeft > 14 && !order.alert15Sent) {
-                await this.sendCountdownAlert(order.id, order.sellerId, 15);
+                await this.sendCountdownAlert(order, 15);
                 await this.prisma.repostOrder.update({
                     where: { id: order.id },
                     data: { alert15Sent: true },
                 });
             }
-
-            // 5-minute alert
             if (minLeft <= 5 && minLeft > 4 && !order.alert5Sent) {
-                await this.sendCountdownAlert(order.id, order.sellerId, 5);
+                await this.sendCountdownAlert(order, 5);
                 await this.prisma.repostOrder.update({
                     where: { id: order.id },
                     data: { alert5Sent: true },
                 });
             }
 
-            // Countdown expired — auto-cancel (seller missed deadline)
             if (msLeft <= 0) {
                 this.logger.warn(`Order ${order.id} countdown expired — marking REFUNDED`);
                 await this.prisma.repostOrder.update({
@@ -92,15 +85,17 @@ export class RepostSchedulerService {
                     this.notifications.sendToUser(order.sellerId, {
                         title: "Order Expired",
                         body: "You missed the proof deadline. The order has been refunded to the buyer.",
-                        type: "REPOST_NEW_REQUEST" as any,
+                        type: "ESCROW_REFUND_PROCESSED" as any,
                         data: { orderId: order.id },
                     }),
                 ]);
+
+                this.gateway.emitOrderRefunded({ ...order, status: RepostOrderStatus.REFUNDED });
             }
         }
     }
 
-    // Runs every minute — auto-releases escrow after 1-hour buyer review window
+    // ─────────── Auto-release escrow after 1-hr review window ───────────
     @Cron(CronExpression.EVERY_MINUTE)
     async handleAutoRelease() {
         const now = new Date();
@@ -117,13 +112,14 @@ export class RepostSchedulerService {
             this.logger.log(`Auto-releasing escrow for order ${order.id}`);
             try {
                 await this.repostOrderService.releaseEscrow(order.id, order, "auto_release");
+                // emitOrderCompleted is called inside releaseEscrow — no duplicate emit needed
             } catch (err) {
                 this.logger.error(`Auto-release failed for ${order.id}: ${err.message}`);
             }
         }
     }
 
-    // Runs every minute — auto-cancel redo if seller misses 30-min redo window
+    // ─────────── Auto-refund if seller misses redo window ───────────
     @Cron(CronExpression.EVERY_MINUTE)
     async handleRedoExpiry() {
         const now = new Date();
@@ -148,16 +144,20 @@ export class RepostSchedulerService {
                 type: "ESCROW_REFUND_ISSUED" as any,
                 data: { orderId: order.id },
             });
+
+            this.gateway.emitOrderRefunded({ ...order, status: RepostOrderStatus.REFUNDED });
         }
     }
 
-    private async sendCountdownAlert(orderId: string, sellerId: string, minutes: number) {
-        await this.notifications.sendToUser(sellerId, {
+    // ─────────── Helper ───────────
+    private async sendCountdownAlert(order: any, minutes: number) {
+        await this.notifications.sendToUser(order.sellerId, {
             title: `${minutes} Minutes Remaining`,
             body: `Your repost request expires in ${minutes} minute${minutes === 1 ? "" : "s"}.`,
             type: "REPOST_EXPIRING_SOON" as any,
-            data: { orderId, minutesLeft: String(minutes) },
+            data: { orderId: order.id, minutesLeft: String(minutes) },
         });
-        this.logger.log(`Sent ${minutes}-min alert for order ${orderId}`);
+        this.gateway.emitCountdownAlert(order, minutes);
+        this.logger.log(`Sent ${minutes}-min alert for order ${order.id}`);
     }
 }

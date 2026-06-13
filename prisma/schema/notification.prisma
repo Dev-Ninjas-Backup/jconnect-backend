@@ -60,6 +60,9 @@ enum NotificationType {
   POST_SHARED
   POST_REPLIED
 
+  // Repost - Follow
+  FOLLOWED_SELLER_NEW_LISTING
+
   // Repost - Buyer
   REPOST_ORDER_SUBMITTED
   REPOST_SELLER_ACCEPTED

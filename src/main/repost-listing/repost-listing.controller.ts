@@ -58,6 +58,14 @@ export class RepostListingController {
 
     @ApiBearerAuth()
     @ValidateUser()
+    @Get("following")
+    @ApiOperation({ summary: "Get repost listings from sellers you follow" })
+    findByFollowing(@GetUser() user: any) {
+        return this.service.findByFollowing(user.userId);
+    }
+
+    @ApiBearerAuth()
+    @ValidateUser()
     @Get(":id")
     @ApiOperation({ summary: "Get repost listing by ID" })
     findOne(@Param("id") id: string) {

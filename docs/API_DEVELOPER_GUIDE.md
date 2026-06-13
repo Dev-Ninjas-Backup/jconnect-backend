@@ -23,6 +23,7 @@
 13. [Enums Reference](#13-enums-reference)
 14. [Notification Types Reference](#14-notification-types-reference)
 15. [Order State Machines](#15-order-state-machines)
+16. [WebSocket Reference — Repost](#16-websocket-reference--repost)
 
 ---
 
@@ -70,13 +71,15 @@
 
 ## 3. Repost Listings (Marketplace)
 
-Sellers (Artists) create repost listings per platform. Buyers browse and purchase.
+Sellers (Artists) create repost listings per platform. Buyers browse and purchase.  
+When a seller creates a new listing, **all their followers receive a push notification** (`FOLLOWED_SELLER_NEW_LISTING`).
 
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
 | POST | `/repost-listings` | ARTIST | Create a listing |
 | GET | `/repost-listings` | USER | Browse marketplace (`?platform=TIKTOK&spotlight=true`) |
 | GET | `/repost-listings/spotlight` | USER | $1 Repost Spotlight listings |
+| GET | `/repost-listings/following` | USER | Listings from sellers you follow |
 | GET | `/repost-listings/my-listings` | ARTIST | My listings |
 | GET | `/repost-listings/dashboard` | ARTIST | My listings with order counts |
 | GET | `/repost-listings/:id` | USER | Get listing details |
@@ -97,8 +100,12 @@ Sellers (Artists) create repost listings per platform. Buyers browse and purchas
 ### $1 Repost Spotlight
 Listings priced exactly `$1.00` are **automatically** enrolled in the Spotlight program:
 - `isSpotlight: true` is set automatically on create/update
-- Featured first in marketplace results
-- Seller receives "Listed in $1 Repost Spotlight" push notification
+- Featured first in marketplace results (`GET /repost-listings/spotlight`)
+- Seller receives `LISTING_FEATURED` push notification
+
+### Following Feed
+`GET /repost-listings/following` returns only active listings from sellers the authenticated user follows.  
+Results are ordered: spotlight first → newest first. Returns `[]` if the user follows no one.
 
 ### Platform Enum Values
 `INSTAGRAM_STORY` | `INSTAGRAM_FEED` | `TIKTOK` | `YOUTUBE` | `FACEBOOK` | `TWITTER`
@@ -107,66 +114,129 @@ Listings priced exactly `$1.00` are **automatically** enrolled in the Spotlight 
 
 ## 4. Repost Orders (Buyer & Seller Flow)
 
-### Full Order Lifecycle
+### Confirmed Buyer Flow (9 screens)
 ```
-NEW_REQUEST → ACCEPTED → IN_PROGRESS → PROOF_SUBMITTED → REVIEW_WINDOW → COMPLETED
-                                                        ↘ REDO_REQUESTED → PROOF_SUBMITTED
-              REJECTED
-              REFUNDED
-              DISPUTED
+Screen 1 → Screen 2      → Screen 3       → Screen 4        → Screen 5
+Select      Add Content     Make Payment     Set Timeframe     [Order submitted]
+Service     URL (buyer)     (buyer, Stripe)  (buyer)
+                                                               ↓
+                                                         Screen 5: Seller Accepts
+                                                         Screen 6: Seller Submits Proof
+                                                         Screen 7: Buyer Reviews Proof
+                                                         Screen 8: 1-Hour Review Window
+                                                         Screen 9: Funds Released
+```
+
+### Order Status Lifecycle
+```
+NEW_REQUEST → ACCEPTED → PROOF_SUBMITTED → COMPLETED
+                                         ↘ REDO_REQUESTED → PROOF_SUBMITTED (loop, max 3×)
+           → REJECTED
+           → REFUNDED  (countdown expired / buyer rejected / redo window expired)
 ```
 
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
-| POST | `/repost-orders` | USER | Buyer: create order (countdown starts immediately) |
-| POST | `/repost-orders/:id/accept` | USER | Seller: accept request |
-| POST | `/repost-orders/:id/reject` | USER | Seller: reject request |
-| POST | `/repost-orders/:id/submit-proof` | USER | Seller: submit proof (multipart or URL) |
-| POST | `/repost-orders/:id/review` | USER | Buyer: accept / reject / redo |
+| POST | `/repost-orders` | USER | Buyer: create order (screens 1–4 combined) |
+| POST | `/repost-orders/:id/accept` | USER | Seller: accept request (screen 5) |
+| POST | `/repost-orders/:id/reject` | USER | Seller: reject request (screen 5) |
+| POST | `/repost-orders/:id/submit-proof` | USER | Seller: submit proof (screen 6) |
+| POST | `/repost-orders/:id/review` | USER | Buyer: accept / reject / redo (screen 7) |
 | GET | `/repost-orders/my-orders` | USER | Buyer: my orders (`?status=ACCEPTED`) |
 | GET | `/repost-orders/my-seller-orders` | USER | Seller: orders on my listings |
 | GET | `/repost-orders/:id` | USER | Get single order (includes `timeRemaining`) |
 
-### Step 1 — Buyer Creates Order
+---
+
+### Screen 1 → 4 — Buyer Creates Order
+
+Screens 1–4 collect data client-side. Everything is submitted in **one API call** at the end of screen 4.
+
+```
+Screen 1 — Buyer selects a listing  →  listingId captured
+Screen 2 — Buyer pastes content URL  →  contentUrl captured
+Screen 3 — Buyer pays via Stripe SDK  →  paymentIntentId captured
+Screen 4 — Buyer selects timeframe  →  timeframe captured → POST /repost-orders
+```
+
 ```json
 POST /repost-orders
 {
-  "listingId": "uuid",
-  "platform": "INSTAGRAM_STORY",
-  "timeframe": "ONE_HOUR",
-  "amount": 100,
-  "contentUrl": "https://instagram.com/p/abc",
-  "paymentIntentId": "pi_stripe_xxx"
+  "listingId":       "uuid",
+  "contentUrl":      "https://instagram.com/p/abc123",
+  "paymentIntentId": "pi_stripe_xxx",
+  "timeframe":       "ONE_HOUR"
 }
 ```
-- Countdown starts immediately at order creation
-- Funds enter escrow (Stripe)
-- Seller receives push notification
 
-### Step 2 — Seller Accepts/Rejects
+> **Note:** `platform` and `amount` are **not** sent by the client.
+> - `platform` is derived from the selected listing automatically.
+> - `amount` is fixed at **$1 (100 cents)** for all repost orders.
+
+**On success:**
+- Countdown starts immediately (`countdownEndsAt = now + timeframe`)
+- `platformFee = 10 cents`, `sellerAmount = 90 cents`
+- Seller receives `REPOST_NEW_REQUEST` push
+- Buyer receives `REPOST_ORDER_SUBMITTED` + `ESCROW_FUNDS_HELD` pushes
+
+---
+
+### Screen 5 — Seller Accepts / Rejects
+
+Seller calls `GET /repost-orders/:id` to view the order and open `contentUrl` to review the content before deciding.
+
 ```
-POST /repost-orders/{id}/accept  → status: ACCEPTED
+POST /repost-orders/{id}/accept  → status: ACCEPTED  (countdown active)
 POST /repost-orders/{id}/reject  → status: REJECTED, buyer refunded
 ```
 
-### Step 3 — Seller Submits Proof
+---
+
+### Screen 6 — Seller Submits Proof
+
 ```
 POST /repost-orders/{id}/submit-proof   (multipart/form-data)
-Fields:
-  proofType: "SCREENSHOT" | "SCREEN_RECORDING" | "URL"
-  proofUrl:  "https://..."   (required only when proofType = URL)
-  files[]:   binary files    (required for SCREENSHOT or SCREEN_RECORDING)
-```
-- 1-hour buyer review window starts immediately
-- If not reviewed in 1 hour → **auto-release to seller**
 
-### Step 4 — Buyer Reviews Proof
+Fields:
+  proofType:  "SCREENSHOT" | "SCREEN_RECORDING" | "URL"
+  proofUrl:   "https://..."   (required only when proofType = URL)
+  files[]:    binary files    (required for SCREENSHOT or SCREEN_RECORDING, max 5)
+```
+
+- Files are uploaded to S3 automatically
+- `reviewWindowEndsAt = now + 1 hour` — buyer has 1 hour to review
+- If buyer does not act within 1 hour → **escrow auto-released to seller**
+
+---
+
+### Screen 7 — Buyer Reviews Proof
+
 ```json
 POST /repost-orders/{id}/review
-{ "action": "ACCEPT" }   → COMPLETED, escrow released to seller
-{ "action": "REJECT" }   → REFUNDED, buyer gets money back
-{ "action": "REDO"   }   → REDO_REQUESTED, seller has 30 minutes to resubmit
+{ "action": "ACCEPT" }   → status: COMPLETED, escrow released to seller
+{ "action": "REJECT" }   → status: REFUNDED, buyer gets money back
+{ "action": "REDO"   }   → status: REDO_REQUESTED, seller has 30 min to resubmit (max 3×)
 ```
+
+---
+
+### Screen 8 — 1-Hour Review Window (Automatic)
+
+The scheduler runs every minute. If `reviewWindowEndsAt` has passed and buyer has not acted:
+- `status → COMPLETED`
+- Escrow auto-released to seller
+- Both parties notified: `ESCROW_FUNDS_RELEASED`
+
+---
+
+### Screen 9 — Funds Released
+
+Upon completion (manual or auto-release):
+- Seller receives: `REPOST_SELLER_FUNDS_RELEASED`
+- Buyer receives: `REPOST_FUNDS_RELEASED`
+- `isReleased: true`, `releasedAt` timestamp set
+
+---
 
 ### Timeframe Values
 | Enum | Duration |
@@ -177,6 +247,8 @@ POST /repost-orders/{id}/review
 | `SIX_HOURS` | 6 hours |
 | `TWELVE_HOURS` | 12 hours |
 | `TWENTY_FOUR_HOURS` | 24 hours |
+
+---
 
 ### `timeRemaining` Response Field
 Every `GET /repost-orders/:id` response includes:
@@ -189,15 +261,20 @@ Every `GET /repost-orders/:id` response includes:
   }
 }
 ```
-Use `minutes` or `ms` to drive your countdown UI.
+Use `minutes` or `ms` to drive your countdown UI (Screen 8).
 
-### Countdown Alerts (Automatic — Seller Only)
-The scheduler fires every minute and sends pushes automatically:
-- **60 min** remaining → push sent
-- **30 min** remaining → push sent
-- **15 min** remaining → push sent
-- **5 min** remaining → push sent
-- **0 min** (expired, no proof) → order auto-refunded
+---
+
+### Countdown Alerts — Seller Only (Automatic)
+The scheduler fires every minute and sends pushes to the seller automatically:
+
+| Time Left | Notification |
+|-----------|-------------|
+| 60 min | `REPOST_EXPIRING_SOON` |
+| 30 min | `REPOST_EXPIRING_SOON` |
+| 15 min | `REPOST_EXPIRING_SOON` |
+| 5 min | `REPOST_EXPIRING_SOON` |
+| 0 min (expired, no proof) | Order → `REFUNDED`, buyer refunded |
 
 ---
 
@@ -373,7 +450,7 @@ All admin endpoints require role: `ADMIN`, `SUPER_ADMIN`, `FINANCE_ADMIN`, or `S
 `INSTAGRAM_STORY` | `INSTAGRAM_FEED` | `TIKTOK` | `YOUTUBE` | `FACEBOOK` | `TWITTER`
 
 ### RepostOrderStatus
-`NEW_REQUEST` | `ACCEPTED` | `IN_PROGRESS` | `PROOF_SUBMITTED` | `REVIEW_WINDOW` | `REDO_REQUESTED` | `COMPLETED` | `REJECTED` | `REFUNDED` | `DISPUTED`
+`NEW_REQUEST` | `ACCEPTED` | `PROOF_SUBMITTED` | `REDO_REQUESTED` | `COMPLETED` | `REJECTED` | `REFUNDED` | `DISPUTED`
 
 ### ProofType
 `SCREENSHOT` | `SCREEN_RECORDING` | `URL`
@@ -390,47 +467,52 @@ All admin endpoints require role: `ADMIN`, `SUPER_ADMIN`, `FINANCE_ADMIN`, or `S
 
 All notifications include `data.orderId` or `data.listingId` for deep linking.
 
+### Repost — Follow
+| Type | Recipient | When |
+|------|-----------|------|
+| `FOLLOWED_SELLER_NEW_LISTING` | Follower | A seller you follow created a new repost listing |
+
 ### Repost — Buyer Receives
 | Type | When |
 |------|------|
-| `REPOST_ORDER_SUBMITTED` | After creating order |
-| `REPOST_SELLER_ACCEPTED` | Seller accepted |
-| `REPOST_SELLER_REJECTED` | Seller rejected (refund initiated) |
-| `REPOST_PROOF_SUBMITTED` | Seller submitted proof |
-| `REPOST_REVIEW_WINDOW_STARTED` | 1-hour review window open |
+| `REPOST_ORDER_SUBMITTED` | After creating order (screen 4) |
+| `REPOST_SELLER_ACCEPTED` | Seller accepted (screen 5) |
+| `REPOST_SELLER_REJECTED` | Seller rejected — refund initiated |
+| `REPOST_PROOF_SUBMITTED` | Seller submitted proof (screen 6) |
+| `REPOST_REVIEW_WINDOW_STARTED` | 1-hour review window open (screen 8) |
 | `REPOST_REDO_SUBMITTED` | Seller resubmitted revised proof |
-| `REPOST_FUNDS_RELEASED` | Escrow released to seller |
+| `REPOST_FUNDS_RELEASED` | Escrow released to seller (screen 9) |
 | `REPOST_DISPUTE_UPDATED` | Dispute status changed |
 
 ### Repost — Seller Receives
 | Type | When |
 |------|------|
-| `REPOST_NEW_REQUEST` | New order received |
-| `REPOST_EXPIRING_SOON` | Countdown alert (60/30/15/5 min) |
+| `REPOST_NEW_REQUEST` | New order received (screen 5) |
+| `REPOST_EXPIRING_SOON` | Countdown alert at 60 / 30 / 15 / 5 min |
 | `REPOST_REQUEST_ACCEPTED` | Confirmed accept |
-| `REPOST_PROOF_SENT` | Proof submitted confirmation |
+| `REPOST_PROOF_SENT` | Proof submitted confirmation (screen 6) |
 | `REPOST_REDO_REQUESTED` | Buyer requested redo |
-| `REPOST_SELLER_FUNDS_RELEASED` | Payment released |
+| `REPOST_SELLER_FUNDS_RELEASED` | Payment released (screen 9) |
 | `REPOST_DISPUTE_OPENED` | Dispute opened |
 
 ### Escrow
 | Type | Recipient | When |
 |------|-----------|------|
-| `ESCROW_FUNDS_HELD` | Buyer | On order creation |
-| `ESCROW_REFUND_ISSUED` | Buyer | On rejection/expiry |
-| `ESCROW_FUNDS_RELEASED` | Both | On completion |
-| `ESCROW_REFUND_PROCESSED` | Buyer | Stripe refund confirmed |
+| `ESCROW_FUNDS_HELD` | Buyer | On order creation (screen 3) |
+| `ESCROW_REFUND_ISSUED` | Buyer | On seller rejection or countdown expiry |
+| `ESCROW_FUNDS_RELEASED` | Both | On completion (screen 9) |
+| `ESCROW_REFUND_PROCESSED` | Seller | Seller's proof was rejected by buyer |
 
-### Listing Management (Seller)
+### Listing Management — Seller
 | Type | When |
 |------|------|
-| `LISTING_APPROVED` | New listing created |
+| `LISTING_APPROVED` | New listing created (standard price) |
 | `LISTING_FEATURED` | $1 listing auto-enrolled in spotlight |
 | `LISTING_PAUSED` | Listing paused |
 | `LISTING_REACTIVATED` | Listing reactivated |
 | `LISTING_REMOVED` | Listing deleted |
 
-### Performance (Seller)
+### Performance — Seller
 | Type | When |
 |------|------|
 | `NEW_REVIEW_RECEIVED` | Review posted on profile |
@@ -454,36 +536,45 @@ All notifications include `data.orderId` or `data.listingId` for deep linking.
 
 ### Repost Order
 ```
-[Buyer] POST /repost-orders
+[Screen 1–4] Buyer: POST /repost-orders { listingId, contentUrl, paymentIntentId, timeframe }
     → status: NEW_REQUEST
-    → countdown started (countdownEndsAt set)
+    → platform derived from listing
+    → amount fixed at $1 (100 cents)
+    → platformFee: 10 cents | sellerAmount: 90 cents
+    → countdown started (countdownEndsAt = now + timeframe)
+    → escrow held
 
-[Seller] POST /repost-orders/:id/accept
+[Screen 5] Seller: POST /repost-orders/:id/accept
     → status: ACCEPTED
 
-[Seller] POST /repost-orders/:id/submit-proof
+[Screen 5] Seller: POST /repost-orders/:id/reject
+    → status: REJECTED
+    → buyer refunded
+
+[Screen 6] Seller: POST /repost-orders/:id/submit-proof
     → status: PROOF_SUBMITTED
     → reviewWindowEndsAt = now + 1 hour
 
-[Buyer] POST /repost-orders/:id/review { action: "ACCEPT" }
-    → status: COMPLETED, isReleased: true
+[Screen 7] Buyer: POST /repost-orders/:id/review { action: "ACCEPT" }
+    → status: COMPLETED, isReleased: true, releasedAt: now
 
-[Buyer] POST /repost-orders/:id/review { action: "REJECT" }
+[Screen 7] Buyer: POST /repost-orders/:id/review { action: "REJECT" }
     → status: REFUNDED
 
-[Buyer] POST /repost-orders/:id/review { action: "REDO" }
-    → status: REDO_REQUESTED, redoWindowEndsAt = now + 30 min
+[Screen 7] Buyer: POST /repost-orders/:id/review { action: "REDO" }
+    → status: REDO_REQUESTED
+    → redoWindowEndsAt = now + 30 min
+    → Seller resubmits → back to PROOF_SUBMITTED (max 3×)
 
-[Seller] POST /repost-orders/:id/submit-proof  (again)
-    → status: PROOF_SUBMITTED (new review window starts)
+[Scheduler — every minute]:
+    if countdownEndsAt < now && status in (NEW_REQUEST | ACCEPTED)
+        → status: REFUNDED, buyer notified
 
-[Scheduler] every minute:
-    → if countdownEndsAt < now && status in (NEW_REQUEST|ACCEPTED|IN_PROGRESS)
-       → status: REFUNDED
-    → if reviewWindowEndsAt < now && status = PROOF_SUBMITTED
-       → status: COMPLETED (auto-release)
-    → if redoWindowEndsAt < now && status = REDO_REQUESTED
-       → status: REFUNDED
+    if reviewWindowEndsAt < now && status = PROOF_SUBMITTED
+        → status: COMPLETED (auto-release, screen 8 → 9)
+
+    if redoWindowEndsAt < now && status = REDO_REQUESTED
+        → status: REFUNDED
 ```
 
 ### Service Order
@@ -496,15 +587,177 @@ PENDING → IN_PROGRESS (seller starts work)
 
 ---
 
+## 16. WebSocket Reference — Repost
+
+The Repost system uses a **hybrid REST + Socket pattern**:
+- **REST endpoints** handle all mutations (auth, validation, DB writes).
+- **WebSocket gateway** pushes real-time state updates to both parties immediately after each REST action — no polling required.
+
+### Connection
+
+```
+Namespace:  /repost
+Transport:  Socket.io (WebSocket with fallback)
+URL:        ws://{host}/repost   (dev)
+            wss://api.daconnect.com/repost   (prod)
+```
+
+**Authenticate on connect** — pass the JWT in one of two ways:
+
+```js
+// Option A — handshake auth object
+const socket = io("/repost", {
+  auth: { token: "Bearer <JWT_TOKEN>" },
+});
+
+// Option B — HTTP header (for server-side clients)
+const socket = io("/repost", {
+  extraHeaders: { Authorization: "Bearer <JWT_TOKEN>" },
+});
+```
+
+On success the server emits `repost:success`:
+```json
+{ "userId": "user-uuid" }
+```
+
+On failure the server emits `repost:error` and disconnects:
+```json
+{ "message": "Missing authorization header" }
+```
+
+---
+
+### Rooms
+
+| Room | Joined by | Receives |
+|------|-----------|---------|
+| `<userId>` | Automatically on connect | All order events where the user is buyer or seller |
+| `order:<orderId>` | Client calls `repost:join_order` | All events for that specific order |
+
+Clients on a dedicated order screen should join the order room for focused updates. The personal room always receives the same events regardless.
+
+---
+
+### Client → Server Events
+
+#### `repost:join_order`
+Join the order room for a specific order. The authenticated user must be the buyer or seller.
+
+```js
+socket.emit("repost:join_order", "order-uuid");
+// success → repost:success  { joined: "order:<orderId>" }
+// failure → repost:error    { message: "Order not found or access denied" }
+```
+
+#### `repost:leave_order`
+Leave the order room.
+
+```js
+socket.emit("repost:leave_order", "order-uuid");
+```
+
+#### `repost:get_order`
+Fetch the latest order state, including `timeRemaining`.
+
+```js
+socket.emit("repost:get_order", "order-uuid");
+// response → repost:get_order  { ...order, timeRemaining: { expired, ms, minutes } }
+// not found → repost:error     { message: "Order not found" }
+```
+
+---
+
+### Server → Client Events
+
+All events include a `timestamp` (ISO 8601) field appended automatically.
+
+| Event | Recipients | Triggered by REST call |
+|-------|-----------|------------------------|
+| `repost:order_created` | buyer + seller | `POST /repost-orders` |
+| `repost:seller_accepted` | buyer + seller | `POST /repost-orders/:id/accept` |
+| `repost:seller_rejected` | buyer + seller | `POST /repost-orders/:id/reject` |
+| `repost:proof_submitted` | buyer + seller | `POST /repost-orders/:id/submit-proof` |
+| `repost:proof_reviewed` | buyer + seller | `POST /repost-orders/:id/review` → ACCEPT |
+| `repost:redo_requested` | buyer + seller | `POST /repost-orders/:id/review` → REDO |
+| `repost:order_completed` | buyer + seller | Buyer accepts proof or auto-release |
+| `repost:order_refunded` | buyer + seller | Any refund path |
+| `repost:countdown_alert` | seller only | Scheduler at 60 / 30 / 15 / 5 min remaining |
+
+#### Payload shape (all order events)
+```json
+{
+  "id": "order-uuid",
+  "status": "ACCEPTED",
+  "buyerId": "uuid",
+  "sellerId": "uuid",
+  "listingId": "uuid",
+  "platform": "INSTAGRAM_STORY",
+  "contentUrl": "https://instagram.com/p/abc123",
+  "amount": 100,
+  "timeframe": "ONE_HOUR",
+  "countdownEndsAt": "2026-06-13T14:00:00.000Z",
+  "timestamp": "2026-06-13T13:05:00.000Z"
+}
+```
+
+#### `repost:countdown_alert` payload (seller only)
+```json
+{
+  "orderId": "order-uuid",
+  "minutesLeft": 30,
+  "countdownEndsAt": "2026-06-13T14:00:00.000Z",
+  "timestamp": "2026-06-13T13:30:00.000Z"
+}
+```
+
+---
+
+### Client Integration Example (React Native / Expo)
+
+```js
+import { io } from "socket.io-client";
+
+const socket = io("wss://api.daconnect.com/repost", {
+  auth: { token: `Bearer ${jwtToken}` },
+  transports: ["websocket"],
+});
+
+// Connection
+socket.on("repost:success", ({ userId }) => console.log("Connected as", userId));
+socket.on("repost:error",   ({ message }) => console.error("WS error:", message));
+
+// Join the order room when opening the order detail screen
+socket.emit("repost:join_order", orderId);
+
+// Listen for real-time state changes
+socket.on("repost:seller_accepted",  (order) => setOrder(order));
+socket.on("repost:proof_submitted",  (order) => setOrder(order));
+socket.on("repost:order_completed",  (order) => setOrder(order));
+socket.on("repost:countdown_alert",  ({ minutesLeft }) => showAlert(minutesLeft));
+
+// Leave room when navigating away
+return () => socket.emit("repost:leave_order", orderId);
+```
+
+---
+
 ## Developer Notes
 
 ### Mobile App Integration Checklist
 - [ ] Register FCM token on every app launch: `PATCH /notifications/fcm-token`
 - [ ] Deep link handler: all notifications include `data.orderId` or `data.listingId`
-- [ ] Poll `GET /repost-orders/:id` to update countdown UI (use `timeRemaining.ms`)
-- [ ] Handle all `RepostOrderStatus` values for UI state
-- [ ] On proof submission use `multipart/form-data` for files, or JSON with `proofUrl` for URLs
+- [ ] Screens 1–4 collect data client-side; submit everything in one `POST /repost-orders` call at screen 4
+- [ ] Create Stripe `PaymentIntent` client-side (screen 3) before submitting the order — pass `paymentIntentId` in the request body
+- [ ] `platform` and `amount` are **not** sent by the client — both are server-side derived
+- [ ] Connect to WebSocket namespace `/repost` on app launch; authenticate with `auth: { token: "Bearer <JWT>" }`
+- [ ] On opening an order detail screen, emit `repost:join_order` to join the order room; emit `repost:leave_order` on exit
+- [ ] Drive all order UI state changes from socket events — no polling needed
+- [ ] Use `repost:countdown_alert` (seller) and `repost:get_order` to drive countdown UI (screen 8)
+- [ ] Handle all active `RepostOrderStatus` values for UI state: `NEW_REQUEST` `ACCEPTED` `PROOF_SUBMITTED` `REDO_REQUESTED` `COMPLETED` `REJECTED` `REFUNDED`
+- [ ] On proof submission use `multipart/form-data` for files, or JSON body with `proofUrl` for URL type
 - [ ] Notification badge: fetch `GET /notifications/unread-count` on app open
+- [ ] Following feed: `GET /repost-listings/following` — show listings from sellers the user follows
 
 ### Admin Dashboard Integration Checklist
 - [ ] Use `GET /admin/dashboard-stats/overview` for the main KPI cards
@@ -514,13 +767,16 @@ PENDING → IN_PROGRESS (seller starts work)
 - [ ] Announcement system: `POST /settings/announcements`
 - [ ] Role management: `PATCH /users/:id/role`
 
-### Platform Fee
-Platform takes **10%** of every repost order automatically:
-- `platformFee = amount * 0.10`
-- `sellerAmount = amount - platformFee`
+### Fixed Pricing
+All repost orders are priced at a **fixed $1.00**:
+- `amount = 100` cents
+- `platformFee = 10` cents (10%)
+- `sellerAmount = 90` cents
+
+The `listing.price` field is used only for the **Spotlight badge** (`price === 1.00` → `isSpotlight: true`).
 
 ### Redo Limits
-Maximum **3 redos** per order. After the 3rd redo is used, `reviewProof` will throw `400 Bad Request`.
+Maximum **3 redos** per order. After the 3rd redo, `POST /repost-orders/:id/review` with `action: "REDO"` returns `400 Bad Request`.
 
 ### Notification History
 All notifications are stored in the database. The `Notification` model has indexes on `userId`, `read`, and `createdAt` for efficient queries.

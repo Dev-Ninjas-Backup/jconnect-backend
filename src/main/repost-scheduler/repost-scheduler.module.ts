@@ -5,7 +5,7 @@ import { PrismaModule } from "src/lib/prisma/prisma.module";
 import { RepostSchedulerService } from "./repost-scheduler.service";
 
 @Module({
-    imports: [PrismaModule, NotificationModule, RepostOrderModule],
+    imports: [PrismaModule, NotificationModule, RepostOrderModule], // RepostOrderModule exports RepostOrderGateway
     providers: [RepostSchedulerService],
 })
 export class RepostSchedulerModule {}
