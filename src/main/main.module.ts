@@ -14,6 +14,7 @@ import { ReviewModule } from "./review/review.module";
 import { ServiceRequestModule } from "./service-request/service-request.module";
 import { ServiceModule } from "./service/service.module";
 import { SettingsModule } from "./settings/settings.module";
+import { ShareModule } from "./share/share.module";
 import { SharedModule } from "./shared/shared.module";
 import { SocialServiceModule } from "./social-service/social-service.module";
 import { SocialServiceRequestModule } from "./social-service-request/social-service-request.module";
@@ -44,6 +45,8 @@ import { UsersModule } from "./users/users.module";
         // Social Service (previously hidden)
         SocialServiceModule,
         SocialServiceRequestModule,
+        // Share / Deep-link preview
+        ShareModule,
     ],
 })
 export class MainModule {}
