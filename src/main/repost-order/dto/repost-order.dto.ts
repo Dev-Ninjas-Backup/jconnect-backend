@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { ProofType, RepostTimeframe } from "@prisma/client";
-import { IsEnum, IsOptional, IsString, IsUrl } from "class-validator";
+import { IsEnum, IsOptional, IsString, IsUrl, MaxLength } from "class-validator";
 
 export class CreateRepostOrderDto {
     @ApiProperty({ example: "listing-uuid", description: "Screen 1 — selected repost listing ID" })
@@ -46,4 +46,14 @@ export class ReviewActionDto {
     @ApiProperty({ enum: ["ACCEPT", "REJECT", "REDO"], example: "ACCEPT" })
     @IsString()
     action: "ACCEPT" | "REJECT" | "REDO";
+
+    @ApiPropertyOptional({
+        example: "The story wasn't pinned to the top — please repost and pin it.",
+        description: "Required when action is REDO — instructions for what the seller should fix",
+        maxLength: 300,
+    })
+    @IsOptional()
+    @IsString()
+    @MaxLength(300)
+    instructions?: string;
 }

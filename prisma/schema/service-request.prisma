@@ -10,7 +10,7 @@ model ServiceRequest {
   price                 Float?    @default(0)
   isPaid                Boolean   @default(false)
   isDeclined            Boolean   @default(false)
-  isAccepted           Boolean   @default(false)
+  isAccepted            Boolean   @default(false)
 
   uploadedFileUrl String[] @default([]) // array, optional in practice
 

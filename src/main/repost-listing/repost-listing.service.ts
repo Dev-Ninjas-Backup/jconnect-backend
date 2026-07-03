@@ -1,18 +1,71 @@
-import { ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
+import {
+    BadRequestException,
+    ForbiddenException,
+    Inject,
+    Injectable,
+    NotFoundException,
+} from "@nestjs/common";
 import { RepostPlatform } from "@prisma/client";
 import { PrismaService } from "src/lib/prisma/prisma.service";
 import { FirebaseNotificationService } from "@main/shared/notification/firebase-notification.service";
+import Stripe from "stripe";
 import {
     CreateRepostListingDto,
     ToggleListingDto,
     UpdateRepostListingDto,
 } from "./dto/repost-listing.dto";
 
+const REPOST_LISTING_PLATFORMS = [
+    {
+        label: "Instagram",
+        value: "INSTAGRAM",
+        repostTypes: [
+            { label: "Story Repost", value: RepostPlatform.INSTAGRAM_STORY },
+            { label: "Feed Repost", value: RepostPlatform.INSTAGRAM_FEED },
+            { label: "Reel Repost", value: RepostPlatform.INSTAGRAM_REEL },
+            { label: "IGTV Repost", value: RepostPlatform.INSTAGRAM_IGTV },
+        ],
+    },
+    {
+        label: "Tiktok",
+        value: "TIKTOK",
+        repostTypes: [
+            { label: "Repost", value: RepostPlatform.TIKTOK },
+            { label: "Duet / Stitch Repost", value: RepostPlatform.TIKTOK_DUET },
+        ],
+    },
+    {
+        label: "X",
+        value: "TWITTER",
+        repostTypes: [
+            { label: "Repost", value: RepostPlatform.TWITTER },
+            { label: "Quote Repost", value: RepostPlatform.TWITTER_QUOTE },
+        ],
+    },
+    {
+        label: "YouTube",
+        value: "YOUTUBE",
+        repostTypes: [
+            { label: "Community Post Repost", value: RepostPlatform.YOUTUBE_COMMUNITY_POST },
+            { label: "Video Repost (Shorts)", value: RepostPlatform.YOUTUBE_SHORTS },
+        ],
+    },
+    {
+        label: "Facebook",
+        value: "FACEBOOK",
+        repostTypes: [
+            { label: "Post Repost", value: RepostPlatform.FACEBOOK_POST },
+            { label: "Story Repost", value: RepostPlatform.FACEBOOK_STORY },
+        ],
+    },
+] as const;
+
 @Injectable()
 export class RepostListingService {
     constructor(
         private prisma: PrismaService,
         private notifications: FirebaseNotificationService,
+        @Inject("STRIPE_CLIENT") private readonly stripe: Stripe,
     ) {}
 
     async create(sellerId: string, dto: CreateRepostListingDto) {
@@ -28,7 +81,8 @@ export class RepostListingService {
                 price: dto.price,
                 followerCount: dto.followerCount,
                 description: dto.description,
-                isSpotlight: dto.price === 1,
+                defaultTurnaround: dto.defaultTurnaround,
+                isSpotlight: dto.isSpotlight ?? dto.price === 1,
             },
         });
 
@@ -127,9 +181,13 @@ export class RepostListingService {
         });
     }
 
-    findBySeller(sellerId: string) {
+    findBySeller(sellerId: string, status?: "active" | "inactive") {
         return this.prisma.repostListing.findMany({
-            where: { sellerId },
+            where: {
+                sellerId,
+                ...(status === "active" && { isPaused: false }),
+                ...(status === "inactive" && { isPaused: true }),
+            },
             orderBy: { createdAt: "desc" },
         });
     }
@@ -153,12 +211,58 @@ export class RepostListingService {
         return listing;
     }
 
+    // Screen 3 (Content & Payment) — "Pay Now" pre-authorizes the charge on the
+    // buyer's saved card. The hold is captured later when escrow releases
+    // (see RepostOrderService.releaseEscrow) and voided on reject/refund.
+    async pay(listingId: string, buyerId: string) {
+        const listing = await this.prisma.repostListing.findUnique({ where: { id: listingId } });
+        if (!listing) throw new NotFoundException("Repost listing not found");
+        if (!listing.isActive || listing.isPaused)
+            throw new BadRequestException("This listing is not available");
+        if (listing.sellerId === buyerId)
+            throw new BadRequestException("You cannot buy your own listing");
+
+        const buyer = await this.prisma.user.findUnique({
+            where: { id: buyerId },
+            include: { paymentMethod: true },
+        });
+        if (!buyer) throw new NotFoundException("User not found");
+        if (!buyer.customerIdStripe)
+            throw new BadRequestException("User does not have a Stripe Customer ID");
+        if (!buyer.paymentMethod?.[0]?.paymentMethod)
+            throw new BadRequestException("No saved payment method on file");
+
+        const amount = Math.round(listing.price * 100);
+
+        const paymentIntent = await this.stripe.paymentIntents.create({
+            amount,
+            currency: "usd",
+            customer: buyer.customerIdStripe,
+            payment_method: buyer.paymentMethod[0].paymentMethod,
+            off_session: true,
+            confirm: true,
+            capture_method: "manual",
+            metadata: {
+                buyerId,
+                listingId,
+            },
+        });
+
+        return {
+            paymentIntentId: paymentIntent.id,
+            amount: paymentIntent.amount,
+            currency: paymentIntent.currency,
+            listingId,
+        };
+    }
+
     async update(id: string, sellerId: string, dto: UpdateRepostListingDto) {
         const listing = await this.prisma.repostListing.findUnique({ where: { id } });
         if (!listing) throw new NotFoundException("Repost listing not found");
         if (listing.sellerId !== sellerId) throw new ForbiddenException("Not your listing");
 
-        const isSpotlight = dto.price !== undefined ? dto.price === 1 : listing.isSpotlight;
+        const isSpotlight =
+            dto.isSpotlight ?? (dto.price !== undefined ? dto.price === 1 : listing.isSpotlight);
 
         return this.prisma.repostListing.update({
             where: { id },
@@ -222,6 +326,10 @@ export class RepostListingService {
             },
             orderBy: { createdAt: "desc" },
         });
+    }
+
+    getPlatforms() {
+        return REPOST_LISTING_PLATFORMS;
     }
 
     getSellerDashboard(sellerId: string) {

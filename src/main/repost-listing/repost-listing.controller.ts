@@ -44,8 +44,9 @@ export class RepostListingController {
     @ValidateArtist()
     @Get("my-listings")
     @ApiOperation({ summary: "Get my repost listings" })
-    myListings(@GetUser() user: any) {
-        return this.service.findBySeller(user.userId);
+    @ApiQuery({ name: "status", enum: ["active", "inactive"], required: false })
+    myListings(@GetUser() user: any, @Query("status") status?: "active" | "inactive") {
+        return this.service.findBySeller(user.userId, status);
     }
 
     @ApiBearerAuth()
@@ -54,6 +55,17 @@ export class RepostListingController {
     @ApiOperation({ summary: "Seller dashboard: listings with order counts" })
     dashboard(@GetUser() user: any) {
         return this.service.getSellerDashboard(user.userId);
+    }
+
+    @ApiBearerAuth()
+    @ValidateUser()
+    @Get("platforms")
+    @ApiOperation({
+        summary:
+            "Get supported platforms + repost types (Repost Hub / Select Repost Option screens, and the create/edit listing form)",
+    })
+    getPlatforms() {
+        return this.service.getPlatforms();
     }
 
     @ApiBearerAuth()
@@ -70,6 +82,17 @@ export class RepostListingController {
     @ApiOperation({ summary: "Get repost listing by ID" })
     findOne(@Param("id") id: string) {
         return this.service.findOne(id);
+    }
+
+    @ApiBearerAuth()
+    @ValidateUser()
+    @Post(":id/pay")
+    @ApiOperation({
+        summary:
+            "Buyer: pre-authorize payment for a listing (Screen 3 — Content & Payment 'Pay Now'). Returns a paymentIntentId to pass to POST /repost-orders.",
+    })
+    pay(@Param("id") id: string, @GetUser() user: any) {
+        return this.service.pay(id, user.userId);
     }
 
     @ApiBearerAuth()

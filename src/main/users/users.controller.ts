@@ -33,7 +33,7 @@ import {
     ApiTags,
 } from "@nestjs/swagger";
 import { Role } from "@prisma/client";
-import { FindArtistDto } from "./dto/findArtist.dto";
+import { ARTIST_CATEGORIES, FindArtistDto } from "./dto/findArtist.dto";
 import { reset_password, UpdateMeDto, UpdateUserDto } from "./dto/user.dto";
 import { UsersService } from "./users.service";
 
@@ -279,6 +279,13 @@ export class UsersController {
     @ApiQuery({ name: "filter", required: false, example: "top-rated" })
     @ApiQuery({ name: "search", required: false, example: "" })
     @ApiQuery({ name: "username", required: false, example: "john_doe" })
+    @ApiQuery({
+        name: "category",
+        required: false,
+        enum: ARTIST_CATEGORIES,
+        example: "REPOST",
+        description: "Filter/sort by home category tile: Social Posts, Reposts, or Services",
+    })
     @ApiResponse({
         status: 200,
         description: "List of artists with their highlights",

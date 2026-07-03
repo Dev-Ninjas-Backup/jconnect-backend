@@ -71,6 +71,7 @@ export class RepostSchedulerService {
 
             if (msLeft <= 0) {
                 this.logger.warn(`Order ${order.id} countdown expired — marking REFUNDED`);
+                await this.repostOrderService.voidPaymentIntent(order.paymentIntentId);
                 await this.prisma.repostOrder.update({
                     where: { id: order.id },
                     data: { status: RepostOrderStatus.REFUNDED },
@@ -134,6 +135,7 @@ export class RepostSchedulerService {
 
         for (const order of expiredRedos) {
             this.logger.warn(`Redo window expired for order ${order.id} — marking REFUNDED`);
+            await this.repostOrderService.voidPaymentIntent(order.paymentIntentId);
             await this.prisma.repostOrder.update({
                 where: { id: order.id },
                 data: { status: RepostOrderStatus.REFUNDED },

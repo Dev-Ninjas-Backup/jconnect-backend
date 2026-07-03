@@ -1,6 +1,9 @@
 import { ApiPropertyOptional } from "@nestjs/swagger";
 import { Type } from "class-transformer";
-import { IsNumber, IsOptional, IsString } from "class-validator";
+import { IsIn, IsNumber, IsOptional, IsString } from "class-validator";
+
+export const ARTIST_CATEGORIES = ["SOCIAL_POST", "SERVICE", "REPOST"] as const;
+export type ArtistCategory = (typeof ARTIST_CATEGORIES)[number];
 
 export class FindArtistDto {
     @ApiPropertyOptional({ example: 1 })
@@ -35,4 +38,14 @@ export class FindArtistDto {
     @IsOptional()
     @IsString()
     username?: string;
+
+    @ApiPropertyOptional({
+        enum: ARTIST_CATEGORIES,
+        example: "REPOST",
+        description:
+            "Filter to artists offering this category (matches the Social Posts / Reposts / Services home tiles) and sorts by that category's lowest price",
+    })
+    @IsOptional()
+    @IsIn(ARTIST_CATEGORIES)
+    category?: ArtistCategory;
 }

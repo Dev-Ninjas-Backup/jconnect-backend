@@ -10,11 +10,11 @@ model RepostOrder {
   listingId String
   listing   RepostListing @relation(fields: [listingId], references: [id])
 
-  platform  RepostPlatform
-  timeframe RepostTimeframe
-  amount    Int
-  platformFee     Int         @default(0)
-  sellerAmount    Int         @default(0)
+  platform     RepostPlatform
+  timeframe    RepostTimeframe
+  amount       Int
+  platformFee  Int             @default(0)
+  sellerAmount Int             @default(0)
 
   status RepostOrderStatus @default(NEW_REQUEST)
 
@@ -37,6 +37,7 @@ model RepostOrder {
   // Redo window (30 min after redo requested)
   redoWindowEndsAt DateTime?
   redoCount        Int       @default(0)
+  redoInstructions String?
 
   // Escrow / Stripe
   paymentIntentId String?

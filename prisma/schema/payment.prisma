@@ -16,7 +16,7 @@ model Payment {
   serviceId String
   service   Service @relation(fields: [serviceId], references: [id])
 
-  buyServices BuyService[] @relation("PaymentToBuyServices") 
+  buyServices BuyService[] @relation("PaymentToBuyServices")
 
   @@map("payments")
 }

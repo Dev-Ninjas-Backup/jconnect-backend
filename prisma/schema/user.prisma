@@ -84,9 +84,9 @@ model User {
 
   highlights Highlight[]
 
-  repostListings      RepostListing[]
-  repostOrdersBuyer   RepostOrder[]  @relation("RepostOrderBuyer")
-  repostOrdersSeller  RepostOrder[]  @relation("RepostOrderSeller")
+  repostListings     RepostListing[]
+  repostOrdersBuyer  RepostOrder[]   @relation("RepostOrderBuyer")
+  repostOrdersSeller RepostOrder[]   @relation("RepostOrderSeller")
 
   @@map("users")
 }

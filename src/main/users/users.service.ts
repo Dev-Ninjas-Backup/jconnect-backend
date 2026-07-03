@@ -5,7 +5,7 @@ import { AwsService } from "@main/aws/aws.service";
 import { FirebaseNotificationService } from "@main/shared/notification/firebase-notification.service";
 import { EVENT_TYPES, InquiryMeta } from "@main/shared/notification/interface/events.name";
 import { EventEmitter2 } from "@nestjs/event-emitter";
-import { OrderStatus, Role } from "@prisma/client";
+import { OrderStatus, Role, ServiceType } from "@prisma/client";
 import agoron2 from "argon2";
 import { NotificationType } from "src/lib/firebase/dto/notification.dto";
 import { PrismaService } from "src/lib/prisma/prisma.service";
@@ -503,7 +503,10 @@ export class UsersService {
         return this.findMe(userId);
     }
 
-    async findAllArtist({ page = 1, limit, filter, search, username }: FindArtistDto, user: any) {
+    async findAllArtist(
+        { page = 1, limit, filter, search, username, category }: FindArtistDto,
+        user: any,
+    ) {
         const baseWhere: any = {
             isDeleted: false,
             isActive: true,
@@ -513,6 +516,15 @@ export class UsersService {
             },
             ...(user?.userId && { id: { not: user.userId } }),
             ...(username && { username: { equals: username, mode: "insensitive" } }),
+            ...(category === "SOCIAL_POST" && {
+                services: { some: { serviceType: ServiceType.SOCIAL_POST } },
+            }),
+            ...(category === "SERVICE" && {
+                services: { some: { serviceType: ServiceType.SERVICE } },
+            }),
+            ...(category === "REPOST" && {
+                repostListings: { some: { isActive: true, isPaused: false } },
+            }),
         };
 
         // 🔹 Add search system (artist_name OR service_name OR hashtags OR location)
@@ -556,7 +568,8 @@ export class UsersService {
 
         // ------------- Determine if we need to fetch all data (for sorting filters) -----------
         const needsFullDataset =
-            filter && ["top-rated", "recently-updated", "suggested"].includes(filter);
+            (filter && ["top-rated", "recently-updated", "suggested"].includes(filter)) ||
+            !!category;
 
         // -------------- Build query options -------------
         const queryOptions: any = {
@@ -564,6 +577,10 @@ export class UsersService {
             include: {
                 services: {
                     orderBy: { updatedAt: "desc" },
+                },
+                repostListings: {
+                    where: { isActive: true, isPaused: false },
+                    orderBy: { price: "asc" },
                 },
                 ReviewsGiven: true,
                 ReviewsReceived: true,
@@ -587,7 +604,24 @@ export class UsersService {
         ]);
 
         // ------------------Remove password from results and cast to any to preserve included relations ------------------
-        const artists: any[] = artistsData.map(({ password, ...artist }) => artist);
+        const artists: any[] = artistsData.map(({ password, ...artist }: any) => {
+            const socialPostPrices = (artist.services ?? [])
+                .filter((s: any) => s.serviceType === ServiceType.SOCIAL_POST)
+                .map((s: any) => s.price);
+            const servicePrices = (artist.services ?? [])
+                .filter((s: any) => s.serviceType === ServiceType.SERVICE)
+                .map((s: any) => s.price);
+            const repostPrices = (artist.repostListings ?? []).map((r: any) => r.price);
+
+            return {
+                ...artist,
+                pricing: {
+                    socialPost: socialPostPrices.length ? Math.min(...socialPostPrices) : null,
+                    service: servicePrices.length ? Math.min(...servicePrices) : null,
+                    repost: repostPrices.length ? Math.min(...repostPrices) : null,
+                },
+            };
+        });
 
         let sortedArtists: any[] = artists;
 
@@ -626,6 +660,21 @@ export class UsersService {
             sortedArtists = [...artists].sort(
                 (a, b) => (b.services?.length ?? 0) - (a.services?.length ?? 0),
             );
+        }
+
+        // 🔹 Category-wise sort: cheapest first within the selected category (Social Posts / Reposts / Services)
+        if (category && !filter) {
+            const pricingKey =
+                category === "SOCIAL_POST"
+                    ? "socialPost"
+                    : category === "SERVICE"
+                      ? "service"
+                      : "repost";
+            sortedArtists = [...artists].sort((a, b) => {
+                const priceA = a.pricing[pricingKey] ?? Infinity;
+                const priceB = b.pricing[pricingKey] ?? Infinity;
+                return priceA - priceB;
+            });
         }
 
         // 🔹 Apply pagination after sort ONLY if filter was applied or no limit

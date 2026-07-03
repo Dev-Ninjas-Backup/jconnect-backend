@@ -67,7 +67,8 @@ export class ShareService {
             url: shareUrl,
             title: service.serviceName,
             description:
-                service.description || `${service.serviceName} by ${creatorName} — $${service.price} ${service.currency}`,
+                service.description ||
+                `${service.serviceName} by ${creatorName} — $${service.price} ${service.currency}`,
             image,
             shareText: `Check out "${service.serviceName}" by ${creatorName} on JConnect! ${shareUrl}`,
         };

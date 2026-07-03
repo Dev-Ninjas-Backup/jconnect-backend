@@ -1,13 +1,16 @@
 import {
     BadRequestException,
     ForbiddenException,
+    Inject,
     Injectable,
+    Logger,
     NotFoundException,
 } from "@nestjs/common";
 import { FirebaseNotificationService } from "@main/shared/notification/firebase-notification.service";
 import { RepostOrderStatus, RepostTimeframe } from "@prisma/client";
 import { randomUUID } from "crypto";
 import { PrismaService } from "src/lib/prisma/prisma.service";
+import Stripe from "stripe";
 import { CreateRepostOrderDto, ReviewActionDto, SubmitProofDto } from "./dto/repost-order.dto";
 import { RepostOrderGateway } from "./repost-order.gateway";
 
@@ -26,10 +29,13 @@ const PLATFORM_FEE_PCT = 0.1; // 10%
 
 @Injectable()
 export class RepostOrderService {
+    private readonly logger = new Logger(RepostOrderService.name);
+
     constructor(
         private prisma: PrismaService,
         private notifications: FirebaseNotificationService,
         private gateway: RepostOrderGateway,
+        @Inject("STRIPE_CLIENT") private readonly stripe: Stripe,
     ) {}
 
     // ─────────── CREATE ORDER ───────────
@@ -44,9 +50,23 @@ export class RepostOrderService {
         if (listing.sellerId === buyerId)
             throw new BadRequestException("You cannot buy your own listing");
 
+        const existingOrder = await this.prisma.repostOrder.findFirst({
+            where: { paymentIntentId: dto.paymentIntentId },
+        });
+        if (existingOrder) throw new BadRequestException("This payment has already been used");
+
+        const paymentIntent = await this.stripe.paymentIntents.retrieve(dto.paymentIntentId);
+        if (!paymentIntent || paymentIntent.status !== "requires_capture")
+            throw new BadRequestException("Payment has not been authorized");
+        if (
+            paymentIntent.metadata?.listingId !== dto.listingId ||
+            paymentIntent.metadata?.buyerId !== buyerId
+        )
+            throw new BadRequestException("Payment does not match this listing/buyer");
+
         const now = new Date();
         const countdownEndsAt = new Date(now.getTime() + TIMEFRAME_MS[dto.timeframe]);
-        const amount = 100; // fixed at $1 (100 cents)
+        const amount = paymentIntent.amount; // authoritative amount actually authorized
         const platformFee = Math.round(amount * PLATFORM_FEE_PCT);
         const sellerAmount = amount - platformFee;
 
@@ -108,6 +128,8 @@ export class RepostOrderService {
             throw new BadRequestException("Order is not in NEW_REQUEST state");
 
         if (!accept) {
+            await this.voidPaymentIntent(order.paymentIntentId);
+
             const updated = await this.prisma.repostOrder.update({
                 where: { id: orderId },
                 data: { status: RepostOrderStatus.REJECTED },
@@ -245,6 +267,8 @@ export class RepostOrderService {
         }
 
         if (dto.action === "REJECT") {
+            await this.voidPaymentIntent(order.paymentIntentId);
+
             const updated = await this.prisma.repostOrder.update({
                 where: { id: orderId },
                 data: { status: RepostOrderStatus.REFUNDED },
@@ -279,14 +303,17 @@ export class RepostOrderService {
                     status: RepostOrderStatus.REDO_REQUESTED,
                     redoWindowEndsAt,
                     redoCount: { increment: 1 },
+                    redoInstructions: dto.instructions ?? null,
                 },
             });
 
             await this.notifications.sendToUser(order.sellerId, {
                 title: "Redo Requested",
-                body: "Buyer requested a redo. You have 30 minutes remaining.",
+                body: dto.instructions
+                    ? `Buyer requested a redo: "${dto.instructions}". You have 30 minutes remaining.`
+                    : "Buyer requested a redo. You have 30 minutes remaining.",
                 type: "REPOST_REDO_REQUESTED" as any,
-                data: { orderId },
+                data: { orderId, instructions: dto.instructions ?? "" },
             });
 
             this.gateway.emitRedoRequested({
@@ -304,6 +331,22 @@ export class RepostOrderService {
     async releaseEscrow(orderId: string, orderData?: any, trigger?: string) {
         const order = orderData ?? (await this.findOrderOrFail(orderId));
         const isAutoRelease = trigger === "auto_release";
+
+        if (order.paymentIntentId) {
+            try {
+                const intent = await this.stripe.paymentIntents.retrieve(order.paymentIntentId);
+                if (intent.status === "requires_capture") {
+                    await this.stripe.paymentIntents.capture(order.paymentIntentId);
+                } else if (intent.status !== "succeeded") {
+                    throw new Error(`unexpected PaymentIntent status "${intent.status}"`);
+                }
+            } catch (err: any) {
+                this.logger.error(
+                    `Failed to capture PaymentIntent ${order.paymentIntentId} for order ${order.id}: ${err.message}`,
+                );
+                throw new BadRequestException("Failed to capture payment; escrow not released");
+            }
+        }
 
         const updated = await this.prisma.repostOrder.update({
             where: { id: order.id },
@@ -325,7 +368,9 @@ export class RepostOrderService {
         await Promise.all([
             this.notifications.sendToUser(order.buyerId, {
                 title: "Funds Released",
-                body: "Funds have been released to the seller.",
+                body: isAutoRelease
+                    ? "The buyer did not take action. Funds have been successfully released to the seller."
+                    : "Funds have been released to the seller.",
                 type: "REPOST_FUNDS_RELEASED" as any,
                 data: { orderId: order.id },
             }),
@@ -394,10 +439,28 @@ export class RepostOrderService {
             },
         });
         if (!order) throw new NotFoundException("Repost order not found");
-        return { ...order, timeRemaining: this.getTimeRemaining(order.countdownEndsAt) };
+        return {
+            ...order,
+            timeRemaining: this.getTimeRemaining(order.countdownEndsAt),
+            reviewTimeRemaining: order.reviewWindowEndsAt
+                ? this.getTimeRemaining(order.reviewWindowEndsAt)
+                : null,
+            redoTimeRemaining: order.redoWindowEndsAt
+                ? this.getTimeRemaining(order.redoWindowEndsAt)
+                : null,
+        };
     }
 
     // ─────────── HELPERS ───────────
+    async voidPaymentIntent(paymentIntentId: string | null) {
+        if (!paymentIntentId) return;
+        try {
+            await this.stripe.paymentIntents.cancel(paymentIntentId);
+        } catch (err: any) {
+            this.logger.warn(`Failed to void PaymentIntent ${paymentIntentId}: ${err.message}`);
+        }
+    }
+
     private async findOrderOrFail(orderId: string) {
         const order = await this.prisma.repostOrder.findUnique({
             where: { id: orderId },
@@ -412,7 +475,19 @@ export class RepostOrderService {
 
     private getTimeRemaining(countdownEndsAt: Date) {
         const ms = countdownEndsAt.getTime() - Date.now();
-        if (ms <= 0) return { expired: true, ms: 0, minutes: 0 };
-        return { expired: false, ms, minutes: Math.floor(ms / 60000) };
+        if (ms <= 0) return { expired: true, ms: 0, minutes: 0, formatted: "00:00:00" };
+
+        const totalSeconds = Math.floor(ms / 1000);
+        const hours = Math.floor(totalSeconds / 3600);
+        const minutes = Math.floor((totalSeconds % 3600) / 60);
+        const seconds = totalSeconds % 60;
+        const pad = (n: number) => String(n).padStart(2, "0");
+
+        return {
+            expired: false,
+            ms,
+            minutes: Math.floor(ms / 60000),
+            formatted: `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`,
+        };
     }
 }
