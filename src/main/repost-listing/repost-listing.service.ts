@@ -23,7 +23,6 @@ const REPOST_LISTING_PLATFORMS = [
             { label: "Story Repost", value: RepostPlatform.INSTAGRAM_STORY },
             { label: "Feed Repost", value: RepostPlatform.INSTAGRAM_FEED },
             { label: "Reel Repost", value: RepostPlatform.INSTAGRAM_REEL },
-            { label: "IGTV Repost", value: RepostPlatform.INSTAGRAM_IGTV },
         ],
     },
     {
@@ -60,6 +59,11 @@ const REPOST_LISTING_PLATFORMS = [
     },
 ] as const;
 
+// Discontinued repost types — no longer offered for new/updated listings, but kept
+// in the RepostPlatform enum since Postgres enum values can't be dropped without a
+// table rewrite, and existing rows (if any) should keep displaying correctly.
+const DEPRECATED_PLATFORMS: RepostPlatform[] = [RepostPlatform.INSTAGRAM_IGTV];
+
 @Injectable()
 export class RepostListingService {
     constructor(
@@ -69,6 +73,9 @@ export class RepostListingService {
     ) {}
 
     async create(sellerId: string, dto: CreateRepostListingDto) {
+        if (DEPRECATED_PLATFORMS.includes(dto.platform))
+            throw new BadRequestException(`${dto.platform} is no longer available`);
+
         const seller = await this.prisma.user.findUnique({
             where: { id: sellerId },
             select: { username: true, full_name: true },
@@ -257,6 +264,9 @@ export class RepostListingService {
     }
 
     async update(id: string, sellerId: string, dto: UpdateRepostListingDto) {
+        if (dto.platform && DEPRECATED_PLATFORMS.includes(dto.platform))
+            throw new BadRequestException(`${dto.platform} is no longer available`);
+
         const listing = await this.prisma.repostListing.findUnique({ where: { id } });
         if (!listing) throw new NotFoundException("Repost listing not found");
         if (listing.sellerId !== sellerId) throw new ForbiddenException("Not your listing");

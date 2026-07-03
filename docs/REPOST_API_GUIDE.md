@@ -28,7 +28,6 @@ All endpoints require `Authorization: Bearer <JWT>` unless noted.
 | `INSTAGRAM_STORY`            | Instagram | Story Repost            |
 | `INSTAGRAM_FEED`             | Instagram | Feed Repost              |
 | `INSTAGRAM_REEL`             | Instagram | Reel Repost              |
-| `INSTAGRAM_IGTV`             | Instagram | IGTV Repost              |
 | `TIKTOK`                     | TikTok    | Repost                   |
 | `TIKTOK_DUET`                | TikTok    | Duet / Stitch Repost     |
 | `TWITTER`                    | X         | Repost                   |
@@ -41,6 +40,11 @@ All endpoints require `Authorization: Bearer <JWT>` unless noted.
 `YOUTUBE` and `FACEBOOK` (bare, no suffix) also still exist for backward
 compatibility with any listing created before the platform/type split — new
 listings should use the specific values above.
+
+`INSTAGRAM_IGTV` still exists in the enum but is **discontinued** — Instagram no
+longer has IGTV. It's removed from the `GET /repost-listings/platforms`
+catalog, and `POST /repost-listings` / `PATCH /repost-listings/:id` reject it
+with `400 INSTAGRAM_IGTV is no longer available`.
 
 **`RepostTimeframe`** — `THIRTY_MIN` `ONE_HOUR` `TWO_HOURS` `SIX_HOURS` `TWELVE_HOURS` `TWENTY_FOUR_HOURS`
 
@@ -55,10 +59,19 @@ listings should use the specific values above.
 | Screen                                     | Endpoint                                   |
 | ------------------------------------------- | -------------------------------------------- |
 | Repost Hub / Select Repost Option           | `GET /repost-listings/platforms`             |
-| Content & Payment — "Pay Now"               | `POST /repost-listings/:id/pay`               |
-| Set Completion Time — "Continue"            | `POST /repost-orders`                        |
+| Content & Payment — "Continue" (no charge yet, just collects `contentUrl` and moves to the next screen) | — |
+| Set Completion Time — "Pay" (fires both calls in sequence) | `POST /repost-listings/:id/pay` → `POST /repost-orders` |
 | Reposts Status — "Paid Repost" tab (buyer)  | `GET /repost-orders/my-orders`               |
 | Reposts Status — "My Repost" tab (seller)   | `GET /repost-orders/my-seller-orders`        |
+
+> Button labels flipped from the original mockups: **Content & Payment** now
+> says "Continue" (just collects the share link, no API call), and **Set
+> Completion Time** now says "Pay" — that's where the buyer actually gets
+> charged. Neither endpoint's contract changed: `pay` only ever needed the
+> listing ID, and `POST /repost-orders` only ever needed all four fields
+> together, so the frontend just calls `pay` then immediately `POST
+> /repost-orders` when "Pay" is tapped, using the `contentUrl` carried over
+> from the previous screen.
 
 ### 1. `GET /repost-listings/platforms`
 
@@ -75,8 +88,7 @@ Hub / Select Repost Option / Create-Edit-Listing dropdowns. Any authenticated us
     "repostTypes": [
       { "label": "Story Repost", "value": "INSTAGRAM_STORY" },
       { "label": "Feed Repost", "value": "INSTAGRAM_FEED" },
-      { "label": "Reel Repost", "value": "INSTAGRAM_REEL" },
-      { "label": "IGTV Repost", "value": "INSTAGRAM_IGTV" }
+      { "label": "Reel Repost", "value": "INSTAGRAM_REEL" }
     ]
   },
   {
@@ -119,11 +131,12 @@ To find a specific seller's actual listing (id + real price) for a chosen
 
 ### 2. `POST /repost-listings/:id/pay`
 
-Buyer taps **Pay Now** on the Content & Payment screen. Pre-authorizes (does
-**not** capture) a charge on the buyer's saved Stripe card for the listing's
-price, via `capture_method: "manual"` — same escrow-hold pattern as the
-existing `POST /payment/make-payment` flow, kept as its own endpoint since
-repost listings aren't `Service` records.
+Buyer taps **Pay** on the Set Completion Time screen (first of the two calls
+that button fires). Pre-authorizes (does **not** capture) a charge on the
+buyer's saved Stripe card for the listing's price, via `capture_method:
+"manual"` — same escrow-hold pattern as the existing
+`POST /payment/make-payment` flow, kept as its own endpoint since repost
+listings aren't `Service` records.
 
 Requires the buyer to already have `customerIdStripe` and a saved
 `PaymentMethod` (from the existing `create-setup-intent` / `confirm-setup-intent`
@@ -149,8 +162,10 @@ own listing, no Stripe customer, or no saved payment method.
 
 ### 3. `POST /repost-orders`
 
-Buyer taps **Continue** on Set Completion Time. Finalizes the order using the
-`paymentIntentId` obtained from step 2.
+Second of the two calls the **Pay** button fires (right after step 2
+succeeds). Finalizes the order using the `paymentIntentId` obtained from step
+2, plus the `contentUrl` collected earlier on the Content & Payment screen and
+the `timeframe` selected on this screen.
 
 **Request**
 
@@ -412,8 +427,9 @@ Every path that changes order status now moves real money, not just DB state:
 
 ## Known gaps
 
-- Bare `YOUTUBE` / `FACEBOOK` enum values are legacy — no listings currently use
-  them, but they remain in the enum for backward compatibility rather than
+- Bare `YOUTUBE` / `FACEBOOK` enum values, and now `INSTAGRAM_IGTV`
+  (discontinued — see Enums above), are legacy/unused — no listings currently
+  use them, but they remain in the enum for backward compatibility rather than
   being removed (Postgres enum values can't be dropped without a table rewrite).
 - `RepostOrderStatus.REVIEW_WINDOW` and `DISPUTED` are declared in the schema
   but nothing currently transitions an order into them (`PROOF_SUBMITTED`
