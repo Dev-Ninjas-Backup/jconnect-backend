@@ -332,10 +332,10 @@ export class UsersService {
         const followerCount = user.follwers ? user.follwers.length : 0;
         const hasRepostListing = (user.repostListings ?? []).length > 0;
         const socialPostCount = (user.services ?? []).filter(
-            (s: any) => s.serviceType === ServiceType.SOCIAL_POST,
+            (s: any) => s.serviceType === ServiceType.SOCIAL_POST && !s.isCustom,
         ).length;
         const serviceCount = (user.services ?? []).filter(
-            (s: any) => s.serviceType === ServiceType.SERVICE,
+            (s: any) => s.serviceType === ServiceType.SERVICE && !s.isCustom,
         ).length;
         const { repostListings, ...userWithoutRepostListings } = user;
 
@@ -632,6 +632,12 @@ export class UsersService {
                 .map((s: any) => s.price);
             const repostPrices = (artist.repostListings ?? []).map((r: any) => r.price);
             const hasRepostListing = (artist.repostListings ?? []).length > 0;
+            const socialPostCount = (artist.services ?? []).filter(
+                (s: any) => s.serviceType === ServiceType.SOCIAL_POST && !s.isCustom,
+            ).length;
+            const serviceCount = (artist.services ?? []).filter(
+                (s: any) => s.serviceType === ServiceType.SERVICE && !s.isCustom,
+            ).length;
 
             return {
                 ...artist,
@@ -641,8 +647,8 @@ export class UsersService {
                     repost: repostPrices.length ? Math.min(...repostPrices) : null,
                 },
                 counts: {
-                    socialPost: socialPostPrices.length,
-                    service: servicePrices.length,
+                    socialPost: socialPostCount,
+                    service: serviceCount,
                     repost: repostPrices.length,
                 },
                 repostBadge: hasRepostListing,
@@ -811,10 +817,10 @@ export class UsersService {
         const followerCount = user.follwers ? user.follwers.length : 0;
         const hasRepostListing = (user.repostListings ?? []).length > 0;
         const socialPostCount = (user.services ?? []).filter(
-            (s: any) => s.serviceType === ServiceType.SOCIAL_POST,
+            (s: any) => s.serviceType === ServiceType.SOCIAL_POST && !s.isCustom,
         ).length;
         const serviceCount = (user.services ?? []).filter(
-            (s: any) => s.serviceType === ServiceType.SERVICE,
+            (s: any) => s.serviceType === ServiceType.SERVICE && !s.isCustom,
         ).length;
         const { repostListings, ...userWithoutRepostListings } = user;
 
