@@ -126,17 +126,17 @@ Hub / Select Repost Option / Create-Edit-Listing dropdowns. Any authenticated us
 ]
 ```
 
-To find a specific seller's actual listing (id + real price) for a chosen
-`repostTypes[].value`, browse `GET /repost-listings?platform=<value>`.
+To find a specific seller's actual listing for a chosen `repostTypes[].value`,
+browse `GET /repost-listings?platform=<value>`. Every listing is $1 — price
+isn't seller-configurable.
 
 ### 2. `POST /repost-listings/:id/pay`
 
 Buyer taps **Pay** on the Set Completion Time screen (first of the two calls
-that button fires). Pre-authorizes (does **not** capture) a charge on the
-buyer's saved Stripe card for the listing's price, via `capture_method:
-"manual"` — same escrow-hold pattern as the existing
-`POST /payment/make-payment` flow, kept as its own endpoint since repost
-listings aren't `Service` records.
+that button fires). Pre-authorizes (does **not** capture) a $1 charge on the
+buyer's saved Stripe card, via `capture_method: "manual"` — same escrow-hold
+pattern as the existing `POST /payment/make-payment` flow, kept as its own
+endpoint since repost listings aren't `Service` records.
 
 Requires the buyer to already have `customerIdStripe` and a saved
 `PaymentMethod` (from the existing `create-setup-intent` / `confirm-setup-intent`
@@ -155,7 +155,7 @@ flow in the `payments` module).
 }
 ```
 
-`amount` is in cents and reflects the listing's actual price (e.g. `$2.50` listing → `250`), not a flat $1.
+`amount` is always `100` (cents) — every repost listing is $1.
 
 **Errors**: `404` listing not found · `400` listing inactive/paused, buying your
 own listing, no Stripe customer, or no saved payment method.
@@ -210,10 +210,9 @@ Server-side, this endpoint:
   `requires_capture` (i.e. it was actually authorized via step 2).
 - Rejects if the PaymentIntent's `metadata.listingId` / `metadata.buyerId`
   don't match the request (prevents replaying someone else's PaymentIntent).
-- `amount`/`platformFee` (10%) /`sellerAmount` are derived from the
-  **PaymentIntent's actual authorized amount**, not the listing price at read
-  time — so a later listing price edit can't retroactively change an
-  in-flight order.
+- `amount`/`platformFee` (10%)/`sellerAmount` are derived from the
+  **PaymentIntent's actual authorized amount** (always `100`), not re-read from
+  the listing — belt-and-suspenders even though price isn't editable.
 
 **Errors**: `404` listing not found · `400` listing unavailable, buying your
 own listing, payment already used, payment not authorized, or payment/listing
@@ -231,9 +230,9 @@ Buyer's "Paid Repost" tab. `status` optional.
     "platform": "INSTAGRAM_STORY",
     "timeframe": "TWELVE_HOURS",
     "status": "ACCEPTED",
-    "amount": 500,
+    "amount": 100,
     "contentUrl": "https://www.instagram.com/p/mybrandpro...",
-    "listing": { "id": "listing-uuid", "platform": "INSTAGRAM_STORY", "price": 5.0, "...": "..." },
+    "listing": { "id": "listing-uuid", "platform": "INSTAGRAM_STORY", "price": 1.0, "...": "..." },
     "seller": { "id": "...", "username": "top_influencer", "profilePhoto": "..." }
   }
 ]
@@ -391,15 +390,21 @@ the held PaymentIntent (see below), not just flip DB status.
 | GET    | `/repost-listings/platforms`             | Any     | Platform/repost-type catalog (see above)         |
 | GET    | `/repost-listings/:id`                   | Any     | Single listing                                    |
 | POST   | `/repost-listings/:id/pay`               | Any     | Pre-authorize payment (see above)                |
-| PATCH  | `/repost-listings/:id`                   | Owner   | Update price/description/defaultTurnaround/etc.  |
-| PATCH  | `/repost-listings/:id/toggle-pause`      | Owner   | Pause/reactivate (drives the Active/Inactive tab) |
+| PATCH  | `/repost-listings/:id`                   | Owner   | Update description/defaultTurnaround/isSpotlight/etc. (price isn't editable — always $1) |
+| PATCH  | `/repost-listings/:id/toggle-pause`      | Owner   | Sets `isPaused` — drives `my-listings?status=active\|inactive` |
+| PATCH  | `/repost-listings/:id/toggle-active`     | Owner   | Sets `isActive` directly (see below)             |
 | DELETE | `/repost-listings/:id`                   | Owner   | Delete                                            |
 
-`RepostListing` fields: `platform`, `price`, `followerCount?`, `description?`,
-`isActive`, `isPaused`, `isSpotlight`, `defaultTurnaround` (`RepostTimeframe`,
-defaults to `TWENTY_FOUR_HOURS`), plus analytics counters
-(`totalPurchases`, `totalAccepts`, `totalProofs`, `totalRedos`,
-`totalAutoReleases`, `totalCompleted`).
+`RepostListing` fields: `platform`, `price` (always `1`, not in the create/update
+DTO — set server-side), `followerCount?`, `description?`, `isActive`,
+`isPaused`, `isSpotlight`, `defaultTurnaround` (`RepostTimeframe`, defaults to
+`TWENTY_FOUR_HOURS`), plus analytics counters (`totalPurchases`,
+`totalAccepts`, `totalProofs`, `totalRedos`, `totalAutoReleases`,
+`totalCompleted`).
+
+`isSpotlight` is a purely explicit opt-in flag (`isSpotlight?: boolean` on
+create/update, defaults `false`) — it no longer gets auto-derived from price,
+since every listing is $1 now and that would make every listing "spotlight."
 
 ### `GET /repost-listings/artist/:artistId`
 
@@ -421,7 +426,7 @@ regardless of status.
     "id": "listing-uuid",
     "sellerId": "artist-uuid",
     "platform": "INSTAGRAM_STORY",
-    "price": 5.0,
+    "price": 1.0,
     "followerCount": 12000,
     "description": "I will repost your content on my Instagram Story",
     "isActive": true,
@@ -444,6 +449,27 @@ regardless of status.
 ```
 
 Sorted spotlight-first, then newest first (`[{ isSpotlight: "desc" }, { createdAt: "desc" }]`), same ordering as the marketplace feed. Returns `[]` if the artist has no active listings — no 404, since a valid user with zero listings isn't an error.
+
+### `PATCH /repost-listings/:id/toggle-active`
+
+Owner-only. Directly sets `RepostListing.isActive`.
+
+**Request**
+
+```json
+{ "isActive": false }
+```
+
+**Response** — the updated `RepostListing` row.
+
+This is a separate switch from `toggle-pause` (`isPaused`):
+
+| Field       | Meaning                                                                 | Effect on visibility |
+| ----------- | ------------------------------------------------------------------------ | ----------------------- |
+| `isPaused`  | Seller-facing pause; drives the Active/Inactive tabs on `my-listings?status=` | Hidden from marketplace/`artist/:artistId` while paused |
+| `isActive`  | Hard on/off switch for the listing                                        | Hidden from marketplace/`artist/:artistId` while inactive |
+
+Both `GET /repost-listings` (marketplace) and `GET /repost-listings/artist/:artistId` require `isActive: true AND isPaused: false` to show a listing — so deactivating via either endpoint hides it from buyers; only the owner's `my-listings` view shows everything regardless of either flag.
 
 ---
 

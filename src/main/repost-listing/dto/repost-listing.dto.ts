@@ -1,16 +1,11 @@
 import { ApiProperty, ApiPropertyOptional, PartialType } from "@nestjs/swagger";
 import { RepostPlatform, RepostTimeframe } from "@prisma/client";
-import { IsBoolean, IsEnum, IsInt, IsNumber, IsOptional, IsString, Min } from "class-validator";
+import { IsBoolean, IsEnum, IsInt, IsOptional, IsString, Min } from "class-validator";
 
 export class CreateRepostListingDto {
     @ApiProperty({ enum: RepostPlatform, example: RepostPlatform.INSTAGRAM_STORY })
     @IsEnum(RepostPlatform)
     platform: RepostPlatform;
-
-    @ApiProperty({ example: 5.0 })
-    @IsNumber()
-    @Min(0)
-    price: number;
 
     @ApiPropertyOptional({ example: 10000 })
     @IsOptional()
@@ -33,9 +28,9 @@ export class CreateRepostListingDto {
     defaultTurnaround?: RepostTimeframe;
 
     @ApiPropertyOptional({
-        example: true,
+        example: false,
         description:
-            "Whether this listing is featured in the $1 Repost Spotlight. Defaults to true when price is $1 if not provided.",
+            "Whether this listing is featured in the $1 Repost Spotlight. Every repost listing is $1 — this only controls featured placement. Defaults to false if not provided.",
     })
     @IsOptional()
     @IsBoolean()
@@ -48,4 +43,10 @@ export class ToggleListingDto {
     @ApiProperty({ example: true })
     @IsBoolean()
     isPaused: boolean;
+}
+
+export class ToggleActiveDto {
+    @ApiProperty({ example: true })
+    @IsBoolean()
+    isActive: boolean;
 }

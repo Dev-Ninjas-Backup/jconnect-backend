@@ -612,6 +612,7 @@ export class UsersService {
                 .filter((s: any) => s.serviceType === ServiceType.SERVICE)
                 .map((s: any) => s.price);
             const repostPrices = (artist.repostListings ?? []).map((r: any) => r.price);
+            const hasRepostListing = (artist.repostListings ?? []).length > 0;
 
             return {
                 ...artist,
@@ -620,6 +621,13 @@ export class UsersService {
                     service: servicePrices.length ? Math.min(...servicePrices) : null,
                     repost: repostPrices.length ? Math.min(...repostPrices) : null,
                 },
+                counts: {
+                    socialPost: socialPostPrices.length,
+                    service: servicePrices.length,
+                    repost: repostPrices.length,
+                },
+                repostBadge: hasRepostListing,
+                availability: hasRepostListing,
             };
         });
 
@@ -718,6 +726,10 @@ export class UsersService {
             where: { id },
             omit: { password: true },
             include: {
+                repostListings: {
+                    where: { isActive: true, isPaused: false },
+                    select: { id: true },
+                },
                 services: {
                     orderBy: { createdAt: "desc" },
                 },
@@ -778,13 +790,17 @@ export class UsersService {
 
         const followingCount = user.following ? user.following.length : 0;
         const followerCount = user.follwers ? user.follwers.length : 0;
+        const hasRepostListing = (user.repostListings ?? []).length > 0;
+        const { repostListings, ...userWithoutRepostListings } = user;
 
         return {
-            ...user,
+            ...userWithoutRepostListings,
             averageRating: avgRating._avg.rating ? parseFloat(avgRating._avg.rating.toFixed(2)) : 0,
             totalReviews: avgRating._count.rating,
             followingCount,
             followerCount,
+            repostBadge: hasRepostListing,
+            availability: hasRepostListing,
         };
     }
 

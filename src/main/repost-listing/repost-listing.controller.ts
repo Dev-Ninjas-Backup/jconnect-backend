@@ -4,6 +4,7 @@ import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from "@nestjs/swagger"
 import { RepostPlatform } from "@prisma/client";
 import {
     CreateRepostListingDto,
+    ToggleActiveDto,
     ToggleListingDto,
     UpdateRepostListingDto,
 } from "./dto/repost-listing.dto";
@@ -79,7 +80,9 @@ export class RepostListingController {
     @ApiBearerAuth()
     @ValidateUser()
     @Get("artist/:artistId")
-    @ApiOperation({ summary: "Get another artist's public repost listings (viewing their profile)" })
+    @ApiOperation({
+        summary: "Get another artist's public repost listings (viewing their profile)",
+    })
     findByArtist(@Param("artistId") artistId: string) {
         return this.service.findByArtist(artistId);
     }
@@ -117,6 +120,14 @@ export class RepostListingController {
     @ApiOperation({ summary: "Pause or reactivate a listing" })
     togglePause(@Param("id") id: string, @GetUser() user: any, @Body() dto: ToggleListingDto) {
         return this.service.togglePause(id, user.userId, dto);
+    }
+
+    @ApiBearerAuth()
+    @ValidateArtist()
+    @Patch(":id/toggle-active")
+    @ApiOperation({ summary: "Activate or deactivate a listing (sets isActive true/false)" })
+    toggleActive(@Param("id") id: string, @GetUser() user: any, @Body() dto: ToggleActiveDto) {
+        return this.service.toggleActive(id, user.userId, dto);
     }
 
     @ApiBearerAuth()

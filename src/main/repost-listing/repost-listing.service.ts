@@ -11,6 +11,7 @@ import { FirebaseNotificationService } from "@main/shared/notification/firebase-
 import Stripe from "stripe";
 import {
     CreateRepostListingDto,
+    ToggleActiveDto,
     ToggleListingDto,
     UpdateRepostListingDto,
 } from "./dto/repost-listing.dto";
@@ -64,6 +65,9 @@ const REPOST_LISTING_PLATFORMS = [
 // table rewrite, and existing rows (if any) should keep displaying correctly.
 const DEPRECATED_PLATFORMS: RepostPlatform[] = [RepostPlatform.INSTAGRAM_IGTV];
 
+// Every repost listing is $1 — price isn't seller-configurable.
+const REPOST_LISTING_PRICE = 1;
+
 @Injectable()
 export class RepostListingService {
     constructor(
@@ -85,11 +89,11 @@ export class RepostListingService {
             data: {
                 sellerId,
                 platform: dto.platform,
-                price: dto.price,
+                price: REPOST_LISTING_PRICE,
                 followerCount: dto.followerCount,
                 description: dto.description,
                 defaultTurnaround: dto.defaultTurnaround,
-                isSpotlight: dto.isSpotlight ?? dto.price === 1,
+                isSpotlight: dto.isSpotlight ?? false,
             },
         });
 
@@ -97,7 +101,7 @@ export class RepostListingService {
         if (listing.isSpotlight) {
             await this.notifications.sendToUser(sellerId, {
                 title: "Listed in $1 Repost Spotlight!",
-                body: "Your listing has been automatically featured in the $1 Repost Spotlight.",
+                body: "Your listing has been featured in the $1 Repost Spotlight.",
                 type: "LISTING_FEATURED" as any,
                 data: { listingId: listing.id },
             });
@@ -293,8 +297,7 @@ export class RepostListingService {
         if (!listing) throw new NotFoundException("Repost listing not found");
         if (listing.sellerId !== sellerId) throw new ForbiddenException("Not your listing");
 
-        const isSpotlight =
-            dto.isSpotlight ?? (dto.price !== undefined ? dto.price === 1 : listing.isSpotlight);
+        const isSpotlight = dto.isSpotlight ?? listing.isSpotlight;
 
         return this.prisma.repostListing.update({
             where: { id },
@@ -321,6 +324,28 @@ export class RepostListingService {
             title: dto.isPaused ? "Listing Paused" : "Listing Reactivated",
             body: notifBody,
             type: notifType as any,
+            data: { listingId: id },
+        });
+
+        return updated;
+    }
+
+    async toggleActive(id: string, sellerId: string, dto: ToggleActiveDto) {
+        const listing = await this.prisma.repostListing.findUnique({ where: { id } });
+        if (!listing) throw new NotFoundException("Repost listing not found");
+        if (listing.sellerId !== sellerId) throw new ForbiddenException("Not your listing");
+
+        const updated = await this.prisma.repostListing.update({
+            where: { id },
+            data: { isActive: dto.isActive },
+        });
+
+        await this.notifications.sendToUser(sellerId, {
+            title: dto.isActive ? "Listing Activated" : "Listing Deactivated",
+            body: dto.isActive
+                ? "Your repost listing is now active and visible on the marketplace."
+                : "Your repost listing has been deactivated and is hidden from the marketplace.",
+            type: (dto.isActive ? "LISTING_ACTIVATED" : "LISTING_DEACTIVATED") as any,
             data: { listingId: id },
         });
 
