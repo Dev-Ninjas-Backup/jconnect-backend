@@ -78,6 +78,14 @@ export class RepostListingController {
 
     @ApiBearerAuth()
     @ValidateUser()
+    @Get("artist/:artistId")
+    @ApiOperation({ summary: "Get another artist's public repost listings (viewing their profile)" })
+    findByArtist(@Param("artistId") artistId: string) {
+        return this.service.findByArtist(artistId);
+    }
+
+    @ApiBearerAuth()
+    @ValidateUser()
     @Get(":id")
     @ApiOperation({ summary: "Get repost listing by ID" })
     findOne(@Param("id") id: string) {

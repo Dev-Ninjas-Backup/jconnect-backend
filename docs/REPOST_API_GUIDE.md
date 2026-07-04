@@ -385,6 +385,7 @@ the held PaymentIntent (see below), not just flip DB status.
 | GET    | `/repost-listings?platform=&spotlight=`  | Any     | Browse active listings (marketplace)            |
 | GET    | `/repost-listings/spotlight`             | Any     | $1 Repost Spotlight listings                     |
 | GET    | `/repost-listings/following`             | Any     | Listings from sellers you follow                 |
+| GET    | `/repost-listings/artist/:artistId`      | Any     | Another artist's public listings (viewing their profile) |
 | GET    | `/repost-listings/my-listings?status=`   | Artist  | Your own listings; `status=active\|inactive`     |
 | GET    | `/repost-listings/dashboard`             | Artist  | Your listings + order counts                     |
 | GET    | `/repost-listings/platforms`             | Any     | Platform/repost-type catalog (see above)         |
@@ -399,6 +400,50 @@ the held PaymentIntent (see below), not just flip DB status.
 defaults to `TWENTY_FOUR_HOURS`), plus analytics counters
 (`totalPurchases`, `totalAccepts`, `totalProofs`, `totalRedos`,
 `totalAutoReleases`, `totalCompleted`).
+
+### `GET /repost-listings/artist/:artistId`
+
+Used when a buyer opens another user's profile and wants to see that artist's
+repost listings — hit this with the profile's `userId` as `:artistId`. Any
+authenticated user can call it (not just the artist themself).
+
+Only publicly visible listings are returned — same visibility rule as the
+marketplace (`GET /repost-listings`): `isActive: true` and `isPaused: false`.
+Paused/inactive listings are hidden from other users, unlike
+`GET /repost-listings/my-listings`, which is owner-only and returns everything
+regardless of status.
+
+**Response**
+
+```json
+[
+  {
+    "id": "listing-uuid",
+    "sellerId": "artist-uuid",
+    "platform": "INSTAGRAM_STORY",
+    "price": 5.0,
+    "followerCount": 12000,
+    "description": "I will repost your content on my Instagram Story",
+    "isActive": true,
+    "isPaused": false,
+    "isSpotlight": false,
+    "defaultTurnaround": "TWENTY_FOUR_HOURS",
+    "totalPurchases": 34,
+    "totalCompleted": 30,
+    "createdAt": "2026-06-10T09:00:00.000Z",
+    "updatedAt": "2026-06-20T11:30:00.000Z",
+    "seller": {
+      "id": "artist-uuid",
+      "full_name": "Saklain Mostak",
+      "username": "saklainmostak",
+      "profilePhoto": "https://.../profile.jpg",
+      "isProfileVerified": true
+    }
+  }
+]
+```
+
+Sorted spotlight-first, then newest first (`[{ isSpotlight: "desc" }, { createdAt: "desc" }]`), same ordering as the marketplace feed. Returns `[]` if the artist has no active listings — no 404, since a valid user with zero listings isn't an error.
 
 ---
 

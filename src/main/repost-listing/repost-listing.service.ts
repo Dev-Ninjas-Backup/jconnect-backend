@@ -188,6 +188,28 @@ export class RepostListingService {
         });
     }
 
+    findByArtist(artistId: string) {
+        return this.prisma.repostListing.findMany({
+            where: {
+                sellerId: artistId,
+                isActive: true,
+                isPaused: false,
+            },
+            include: {
+                seller: {
+                    select: {
+                        id: true,
+                        full_name: true,
+                        username: true,
+                        profilePhoto: true,
+                        isProfileVerified: true,
+                    },
+                },
+            },
+            orderBy: [{ isSpotlight: "desc" }, { createdAt: "desc" }],
+        });
+    }
+
     findBySeller(sellerId: string, status?: "active" | "inactive") {
         return this.prisma.repostListing.findMany({
             where: {
