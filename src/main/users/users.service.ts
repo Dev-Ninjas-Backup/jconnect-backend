@@ -212,6 +212,10 @@ export class UsersService {
                 },
                 // devices: true,
                 services: true,
+                repostListings: {
+                    where: { isActive: true, isPaused: false },
+                    select: { id: true },
+                },
                 following: {
                     include: {
                         following: {
@@ -326,11 +330,26 @@ export class UsersService {
 
         const followingCount = user.following ? user.following.length : 0;
         const followerCount = user.follwers ? user.follwers.length : 0;
+        const hasRepostListing = (user.repostListings ?? []).length > 0;
+        const socialPostCount = (user.services ?? []).filter(
+            (s: any) => s.serviceType === ServiceType.SOCIAL_POST,
+        ).length;
+        const serviceCount = (user.services ?? []).filter(
+            (s: any) => s.serviceType === ServiceType.SERVICE,
+        ).length;
+        const { repostListings, ...userWithoutRepostListings } = user;
 
         return {
-            ...user,
+            ...userWithoutRepostListings,
             followingCount,
             followerCount,
+            counts: {
+                socialPost: socialPostCount,
+                service: serviceCount,
+                repost: (user.repostListings ?? []).length,
+            },
+            repostBadge: hasRepostListing,
+            availability: hasRepostListing,
             stats: {
                 totalDeals,
                 totalEarnings: totalEarning,
