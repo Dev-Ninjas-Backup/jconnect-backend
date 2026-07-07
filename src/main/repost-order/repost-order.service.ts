@@ -208,6 +208,7 @@ export class RepostOrderService {
                 proofType: dto.proofType,
                 proofUrl: dto.proofUrl ?? null,
                 proofFiles: files,
+                proofNote: dto.note ?? null,
                 proofSubmittedAt: new Date(),
                 reviewWindowEndsAt,
                 redoWindowEndsAt: null,

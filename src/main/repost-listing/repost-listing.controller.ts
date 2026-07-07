@@ -37,8 +37,8 @@ export class RepostListingController {
     @ValidateUser()
     @Get("spotlight")
     @ApiOperation({ summary: "Get $1 Repost Spotlight listings" })
-    getSpotlight() {
-        return this.service.getSpotlightListings();
+    getSpotlight(@GetUser() user: any) {
+        return this.service.getSpotlightListings(user.userId);
     }
 
     @ApiBearerAuth()

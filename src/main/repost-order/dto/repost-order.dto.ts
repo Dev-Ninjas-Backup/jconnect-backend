@@ -40,6 +40,16 @@ export class SubmitProofDto {
     @IsOptional()
     @IsString()
     proofUrl?: string;
+
+    @ApiPropertyOptional({
+        example: "Posted to my story and pinned it to the top.",
+        description: "Optional note from the seller about the submitted proof",
+        maxLength: 300,
+    })
+    @IsOptional()
+    @IsString()
+    @MaxLength(300)
+    note?: string;
 }
 
 export class ReviewActionDto {

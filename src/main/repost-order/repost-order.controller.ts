@@ -65,6 +65,11 @@ export class RepostOrderController {
                 proofType: { type: "string", enum: ["SCREENSHOT", "SCREEN_RECORDING", "URL"] },
                 proofUrl: { type: "string", description: "Required when proofType is URL" },
                 files: { type: "array", items: { type: "string", format: "binary" } },
+                note: {
+                    type: "string",
+                    maxLength: 300,
+                    description: "Optional note from the seller about the submitted proof",
+                },
             },
             required: ["proofType"],
         },

@@ -367,9 +367,14 @@ export class RepostListingService {
         return this.prisma.repostListing.delete({ where: { id } });
     }
 
-    getSpotlightListings() {
+    getSpotlightListings(sellerId?: string) {
         return this.prisma.repostListing.findMany({
-            where: { isSpotlight: true, isActive: true, isPaused: false },
+            where: {
+                isSpotlight: true,
+                isActive: true,
+                isPaused: false,
+                ...(sellerId && { sellerId: { not: sellerId } }),
+            },
             include: {
                 seller: {
                     select: {

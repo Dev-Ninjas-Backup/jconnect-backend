@@ -29,6 +29,7 @@ model RepostOrder {
   proofType        ProofType?
   proofUrl         String?
   proofFiles       String[]
+  proofNote        String?
   proofSubmittedAt DateTime?
 
   // Buyer review window (1 hour after proof submitted)
