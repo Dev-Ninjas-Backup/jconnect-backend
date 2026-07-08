@@ -74,7 +74,7 @@ export class RepostOrderController {
             required: ["proofType"],
         },
     })
-    @UseInterceptors(FilesInterceptor("files", 5))
+    @UseInterceptors(FilesInterceptor("files", 5, { limits: { fileSize: 500 * 1024 * 1024 } }))
     async submitProof(
         @Param("id") id: string,
         @GetUser() user: any,
