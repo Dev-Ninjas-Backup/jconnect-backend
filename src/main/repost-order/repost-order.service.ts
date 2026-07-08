@@ -85,6 +85,9 @@ export class RepostOrderService {
                 contentUrl: dto.contentUrl,
                 paymentIntentId: dto.paymentIntentId,
             },
+            include: {
+                buyer: { select: { id: true, username: true, full_name: true } },
+            },
         });
 
         await this.prisma.repostListing.update({
@@ -93,25 +96,27 @@ export class RepostOrderService {
         });
 
         const sellerName = listing.seller.username ?? listing.seller.full_name;
+        const buyerName = order.buyer.username ?? order.buyer.full_name;
+        const priceStr = `$${(amount / 100).toFixed(2)}`;
 
         await Promise.all([
             this.notifications.sendToUser(buyerId, {
                 title: "Repost Request Sent",
-                body: `Your repost request has been sent to @${sellerName}.`,
+                body: `Your ${priceStr} repost request (Order #${order.orderCode}) has been sent to @${sellerName}. You'll be notified once they respond.`,
                 type: "REPOST_ORDER_SUBMITTED" as any,
-                data: { orderId: order.id },
+                data: { orderId: order.id, orderCode: order.orderCode, amount: amount.toString() },
             }),
             this.notifications.sendToUser(listing.sellerId, {
                 title: "New Repost Request",
-                body: "You received a new repost request.",
+                body: `@${buyerName} sent you a ${priceStr} repost request (Order #${order.orderCode}). Accept or reject before it expires.`,
                 type: "REPOST_NEW_REQUEST" as any,
-                data: { orderId: order.id },
+                data: { orderId: order.id, orderCode: order.orderCode, amount: amount.toString() },
             }),
             this.notifications.sendToUser(buyerId, {
                 title: "Funds Held in Escrow",
-                body: "Your payment is securely held in escrow until delivery is confirmed.",
+                body: `${priceStr} for Order #${order.orderCode} is securely held in escrow until delivery is confirmed.`,
                 type: "ESCROW_FUNDS_HELD" as any,
-                data: { orderId: order.id },
+                data: { orderId: order.id, orderCode: order.orderCode, amount: amount.toString() },
             }),
         ]);
 
@@ -135,18 +140,20 @@ export class RepostOrderService {
                 data: { status: RepostOrderStatus.REJECTED },
             });
 
+            const priceStr = `$${(order.amount / 100).toFixed(2)}`;
+
             await Promise.all([
                 this.notifications.sendToUser(order.buyerId, {
                     title: "Repost Request Declined",
-                    body: `@${order.seller?.username ?? "Seller"} declined your repost request. Your refund is being processed.`,
+                    body: `@${order.seller?.username ?? "Seller"} declined your repost request (Order #${order.orderCode}). Your refund is being processed.`,
                     type: "REPOST_SELLER_REJECTED" as any,
-                    data: { orderId },
+                    data: { orderId, orderCode: order.orderCode },
                 }),
                 this.notifications.sendToUser(order.buyerId, {
                     title: "Refund Issued",
-                    body: "Your refund has been initiated and will appear in 3-5 business days.",
+                    body: `Your ${priceStr} refund for Order #${order.orderCode} has been initiated and will appear in 3-5 business days.`,
                     type: "ESCROW_REFUND_ISSUED" as any,
-                    data: { orderId },
+                    data: { orderId, orderCode: order.orderCode, amount: order.amount.toString() },
                 }),
             ]);
 
@@ -162,15 +169,15 @@ export class RepostOrderService {
         await Promise.all([
             this.notifications.sendToUser(order.buyerId, {
                 title: "Repost Request Accepted",
-                body: `@${order.seller?.username ?? "Seller"} accepted your repost request.`,
+                body: `@${order.seller?.username ?? "Seller"} accepted your repost request (Order #${order.orderCode}). They'll submit proof once it's posted.`,
                 type: "REPOST_SELLER_ACCEPTED" as any,
-                data: { orderId },
+                data: { orderId, orderCode: order.orderCode },
             }),
             this.notifications.sendToUser(sellerId, {
                 title: "Request Accepted",
-                body: "You accepted the repost request. Submit proof before the countdown expires.",
+                body: `You accepted @${order.buyer?.username ?? "the buyer"}'s repost request (Order #${order.orderCode}). Submit proof before the countdown expires.`,
                 type: "REPOST_REQUEST_ACCEPTED" as any,
-                data: { orderId },
+                data: { orderId, orderCode: order.orderCode },
             }),
         ]);
 
@@ -221,27 +228,29 @@ export class RepostOrderService {
         });
 
         const isRedo = order.status === RepostOrderStatus.REDO_REQUESTED;
+        const sellerName = order.seller?.username ?? "Your seller";
+        const buyerName = order.buyer?.username ?? "The buyer";
 
         await Promise.all([
             this.notifications.sendToUser(order.buyerId, {
                 title: isRedo ? "Revised Proof Submitted" : "Proof Submitted",
                 body: isRedo
-                    ? "Your seller submitted revised proof."
-                    : "Proof has been submitted for your repost order.",
+                    ? `@${sellerName} submitted revised proof for Order #${order.orderCode}. You have 1 hour to review.`
+                    : `@${sellerName} submitted proof for Order #${order.orderCode}. You have 1 hour to review.`,
                 type: (isRedo ? "REPOST_REDO_SUBMITTED" : "REPOST_PROOF_SUBMITTED") as any,
-                data: { orderId },
+                data: { orderId, orderCode: order.orderCode },
             }),
             this.notifications.sendToUser(order.buyerId, {
                 title: "Review Window Started",
-                body: "You have 1 hour to review the submitted proof.",
+                body: `You have 1 hour to review @${sellerName}'s proof for Order #${order.orderCode} before it's auto-approved.`,
                 type: "REPOST_REVIEW_WINDOW_STARTED" as any,
-                data: { orderId },
+                data: { orderId, orderCode: order.orderCode },
             }),
             this.notifications.sendToUser(sellerId, {
                 title: "Proof Submitted Successfully",
-                body: "Your proof has been submitted successfully.",
+                body: `Your proof for @${buyerName}'s Order #${order.orderCode} has been submitted successfully. They have 1 hour to review it.`,
                 type: "REPOST_PROOF_SENT" as any,
-                data: { orderId },
+                data: { orderId, orderCode: order.orderCode },
             }),
         ]);
 
@@ -274,18 +283,19 @@ export class RepostOrderService {
                 where: { id: orderId },
                 data: { status: RepostOrderStatus.REFUNDED },
             });
+            const priceStr = `$${(order.amount / 100).toFixed(2)}`;
             await Promise.all([
                 this.notifications.sendToUser(order.buyerId, {
                     title: "Refund Issued",
-                    body: "Your refund has been initiated.",
+                    body: `Your ${priceStr} refund for Order #${order.orderCode} has been initiated.`,
                     type: "ESCROW_REFUND_ISSUED" as any,
-                    data: { orderId },
+                    data: { orderId, orderCode: order.orderCode, amount: order.amount.toString() },
                 }),
                 this.notifications.sendToUser(order.sellerId, {
                     title: "Proof Rejected",
-                    body: "The buyer rejected your proof. The order has been refunded.",
+                    body: `@${order.buyer?.username ?? "The buyer"} rejected your proof for Order #${order.orderCode}. The order has been refunded.`,
                     type: "ESCROW_REFUND_PROCESSED" as any,
-                    data: { orderId },
+                    data: { orderId, orderCode: order.orderCode },
                 }),
             ]);
 
@@ -308,13 +318,14 @@ export class RepostOrderService {
                 },
             });
 
+            const buyerName = order.buyer?.username ?? "The buyer";
             await this.notifications.sendToUser(order.sellerId, {
                 title: "Redo Requested",
                 body: dto.instructions
-                    ? `Buyer requested a redo: "${dto.instructions}". You have 30 minutes remaining.`
-                    : "Buyer requested a redo. You have 30 minutes remaining.",
+                    ? `@${buyerName} requested a redo for Order #${order.orderCode}: "${dto.instructions}". You have 30 minutes remaining.`
+                    : `@${buyerName} requested a redo for Order #${order.orderCode}. You have 30 minutes remaining.`,
                 type: "REPOST_REDO_REQUESTED" as any,
-                data: { orderId, instructions: dto.instructions ?? "" },
+                data: { orderId, orderCode: order.orderCode, instructions: dto.instructions ?? "" },
             });
 
             this.gateway.emitRedoRequested({
@@ -366,32 +377,37 @@ export class RepostOrderService {
             },
         });
 
+        const sellerName = order.seller?.username ?? "the seller";
+        const buyerName = order.buyer?.username ?? "the buyer";
+        const priceStr = `$${(order.amount / 100).toFixed(2)}`;
+        const sellerPriceStr = `$${(order.sellerAmount / 100).toFixed(2)}`;
+
         await Promise.all([
             this.notifications.sendToUser(order.buyerId, {
                 title: "Funds Released",
                 body: isAutoRelease
-                    ? "The buyer did not take action. Funds have been successfully released to the seller."
-                    : "Funds have been released to the seller.",
+                    ? `You didn't review in time, so ${priceStr} for Order #${order.orderCode} was automatically released to @${sellerName}.`
+                    : `You approved the proof — ${priceStr} for Order #${order.orderCode} has been released to @${sellerName}.`,
                 type: "REPOST_FUNDS_RELEASED" as any,
-                data: { orderId: order.id },
+                data: { orderId: order.id, orderCode: order.orderCode, amount: order.amount.toString() },
             }),
             this.notifications.sendToUser(order.sellerId, {
                 title: "Funds Released to Your Balance",
-                body: "Funds have been released to your balance.",
+                body: `You received ${sellerPriceStr} from @${buyerName} for Order #${order.orderCode}. Funds are now in your balance.`,
                 type: "REPOST_SELLER_FUNDS_RELEASED" as any,
-                data: { orderId: order.id },
+                data: { orderId: order.id, orderCode: order.orderCode, amount: order.sellerAmount.toString() },
             }),
             this.notifications.sendToUser(order.buyerId, {
                 title: "Escrow Released",
-                body: "Escrow funds have been released to the seller.",
+                body: `Escrow of ${priceStr} for Order #${order.orderCode} has been released to @${sellerName}.`,
                 type: "ESCROW_FUNDS_RELEASED" as any,
-                data: { orderId: order.id },
+                data: { orderId: order.id, orderCode: order.orderCode, amount: order.amount.toString() },
             }),
             this.notifications.sendToUser(order.sellerId, {
                 title: "Funds Released",
-                body: "Your pending funds are now available in your balance.",
+                body: `Your ${sellerPriceStr} from @${buyerName}'s Order #${order.orderCode} is now available in your balance.`,
                 type: "ESCROW_FUNDS_RELEASED" as any,
-                data: { orderId: order.id },
+                data: { orderId: order.id, orderCode: order.orderCode, amount: order.sellerAmount.toString() },
             }),
         ]);
 

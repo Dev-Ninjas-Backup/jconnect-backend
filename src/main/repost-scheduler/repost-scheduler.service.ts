@@ -33,7 +33,10 @@ export class RepostSchedulerService {
                 },
                 isReleased: false,
             },
-            include: { seller: { select: { id: true, username: true } } },
+            include: {
+                seller: { select: { id: true, username: true } },
+                buyer: { select: { id: true, username: true } },
+            },
         });
 
         for (const order of activeOrders) {
@@ -76,18 +79,20 @@ export class RepostSchedulerService {
                     where: { id: order.id },
                     data: { status: RepostOrderStatus.REFUNDED },
                 });
+                const sellerName = order.seller?.username ?? "The seller";
+                const buyerName = order.buyer?.username ?? "the buyer";
                 await Promise.all([
                     this.notifications.sendToUser(order.buyerId, {
                         title: "Order Expired",
-                        body: "The seller did not submit proof in time. Your refund is being processed.",
+                        body: `@${sellerName} did not submit proof in time for Order #${order.orderCode}. Your refund is being processed.`,
                         type: "ESCROW_REFUND_ISSUED" as any,
-                        data: { orderId: order.id },
+                        data: { orderId: order.id, orderCode: order.orderCode },
                     }),
                     this.notifications.sendToUser(order.sellerId, {
                         title: "Order Expired",
-                        body: "You missed the proof deadline. The order has been refunded to the buyer.",
+                        body: `You missed the proof deadline for @${buyerName}'s Order #${order.orderCode}. The order has been refunded to the buyer.`,
                         type: "ESCROW_REFUND_PROCESSED" as any,
-                        data: { orderId: order.id },
+                        data: { orderId: order.id, orderCode: order.orderCode },
                     }),
                 ]);
 
@@ -106,6 +111,10 @@ export class RepostSchedulerService {
                 status: RepostOrderStatus.PROOF_SUBMITTED,
                 reviewWindowEndsAt: { lte: now },
                 isReleased: false,
+            },
+            include: {
+                seller: { select: { id: true, username: true } },
+                buyer: { select: { id: true, username: true } },
             },
         });
 
@@ -131,6 +140,9 @@ export class RepostSchedulerService {
                 redoWindowEndsAt: { lte: now },
                 isReleased: false,
             },
+            include: {
+                seller: { select: { id: true, username: true } },
+            },
         });
 
         for (const order of expiredRedos) {
@@ -142,9 +154,9 @@ export class RepostSchedulerService {
             });
             await this.notifications.sendToUser(order.buyerId, {
                 title: "Redo Expired",
-                body: "The seller did not submit revised proof. Your refund is being processed.",
+                body: `@${order.seller?.username ?? "The seller"} did not submit revised proof for Order #${order.orderCode} in time. Your refund is being processed.`,
                 type: "ESCROW_REFUND_ISSUED" as any,
-                data: { orderId: order.id },
+                data: { orderId: order.id, orderCode: order.orderCode },
             });
 
             this.gateway.emitOrderRefunded({ ...order, status: RepostOrderStatus.REFUNDED });
@@ -153,11 +165,12 @@ export class RepostSchedulerService {
 
     // ─────────── Helper ───────────
     private async sendCountdownAlert(order: any, minutes: number) {
+        const buyerName = order.buyer?.username ?? "the buyer";
         await this.notifications.sendToUser(order.sellerId, {
             title: `${minutes} Minutes Remaining`,
-            body: `Your repost request expires in ${minutes} minute${minutes === 1 ? "" : "s"}.`,
+            body: `@${buyerName}'s repost request (Order #${order.orderCode}) expires in ${minutes} minute${minutes === 1 ? "" : "s"}. Submit proof before it's refunded.`,
             type: "REPOST_EXPIRING_SOON" as any,
-            data: { orderId: order.id, minutesLeft: String(minutes) },
+            data: { orderId: order.id, orderCode: order.orderCode, minutesLeft: String(minutes) },
         });
         this.gateway.emitCountdownAlert(order, minutes);
         this.logger.log(`Sent ${minutes}-min alert for order ${order.id}`);
