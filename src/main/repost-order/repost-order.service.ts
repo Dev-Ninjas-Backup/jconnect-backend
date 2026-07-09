@@ -389,25 +389,41 @@ export class RepostOrderService {
                     ? `You didn't review in time, so ${priceStr} for Order #${order.orderCode} was automatically released to @${sellerName}.`
                     : `You approved the proof — ${priceStr} for Order #${order.orderCode} has been released to @${sellerName}.`,
                 type: "REPOST_FUNDS_RELEASED" as any,
-                data: { orderId: order.id, orderCode: order.orderCode, amount: order.amount.toString() },
+                data: {
+                    orderId: order.id,
+                    orderCode: order.orderCode,
+                    amount: order.amount.toString(),
+                },
             }),
             this.notifications.sendToUser(order.sellerId, {
                 title: "Funds Released to Your Balance",
                 body: `You received ${sellerPriceStr} from @${buyerName} for Order #${order.orderCode}. Funds are now in your balance.`,
                 type: "REPOST_SELLER_FUNDS_RELEASED" as any,
-                data: { orderId: order.id, orderCode: order.orderCode, amount: order.sellerAmount.toString() },
+                data: {
+                    orderId: order.id,
+                    orderCode: order.orderCode,
+                    amount: order.sellerAmount.toString(),
+                },
             }),
             this.notifications.sendToUser(order.buyerId, {
                 title: "Escrow Released",
                 body: `Escrow of ${priceStr} for Order #${order.orderCode} has been released to @${sellerName}.`,
                 type: "ESCROW_FUNDS_RELEASED" as any,
-                data: { orderId: order.id, orderCode: order.orderCode, amount: order.amount.toString() },
+                data: {
+                    orderId: order.id,
+                    orderCode: order.orderCode,
+                    amount: order.amount.toString(),
+                },
             }),
             this.notifications.sendToUser(order.sellerId, {
                 title: "Funds Released",
                 body: `Your ${sellerPriceStr} from @${buyerName}'s Order #${order.orderCode} is now available in your balance.`,
                 type: "ESCROW_FUNDS_RELEASED" as any,
-                data: { orderId: order.id, orderCode: order.orderCode, amount: order.sellerAmount.toString() },
+                data: {
+                    orderId: order.id,
+                    orderCode: order.orderCode,
+                    amount: order.sellerAmount.toString(),
+                },
             }),
         ]);
 

@@ -143,6 +143,7 @@ export class RepostListingService {
             where: {
                 isActive: true,
                 isPaused: false,
+                isDeleted: false,
                 ...(platform && { platform }),
                 ...(spotlightOnly && { isSpotlight: true }),
             },
@@ -176,6 +177,7 @@ export class RepostListingService {
                 sellerId: { in: sellerIds },
                 isActive: true,
                 isPaused: false,
+                isDeleted: false,
             },
             include: {
                 seller: {
@@ -198,6 +200,7 @@ export class RepostListingService {
                 sellerId: artistId,
                 isActive: true,
                 isPaused: false,
+                isDeleted: false,
             },
             include: {
                 seller: {
@@ -218,6 +221,7 @@ export class RepostListingService {
         return this.prisma.repostListing.findMany({
             where: {
                 sellerId,
+                isDeleted: false,
                 ...(status === "active" && { isPaused: false }),
                 ...(status === "inactive" && { isPaused: true }),
             },
@@ -240,7 +244,7 @@ export class RepostListingService {
                 },
             },
         });
-        if (!listing) throw new NotFoundException("Repost listing not found");
+        if (!listing || listing.isDeleted) throw new NotFoundException("Repost listing not found");
         return listing;
     }
 
@@ -249,7 +253,7 @@ export class RepostListingService {
     // (see RepostOrderService.releaseEscrow) and voided on reject/refund.
     async pay(listingId: string, buyerId: string) {
         const listing = await this.prisma.repostListing.findUnique({ where: { id: listingId } });
-        if (!listing) throw new NotFoundException("Repost listing not found");
+        if (!listing || listing.isDeleted) throw new NotFoundException("Repost listing not found");
         if (!listing.isActive || listing.isPaused)
             throw new BadRequestException("This listing is not available");
         if (listing.sellerId === buyerId)
@@ -294,7 +298,7 @@ export class RepostListingService {
             throw new BadRequestException(`${dto.platform} is no longer available`);
 
         const listing = await this.prisma.repostListing.findUnique({ where: { id } });
-        if (!listing) throw new NotFoundException("Repost listing not found");
+        if (!listing || listing.isDeleted) throw new NotFoundException("Repost listing not found");
         if (listing.sellerId !== sellerId) throw new ForbiddenException("Not your listing");
 
         const isSpotlight = dto.isSpotlight ?? listing.isSpotlight;
@@ -307,7 +311,7 @@ export class RepostListingService {
 
     async togglePause(id: string, sellerId: string, dto: ToggleListingDto) {
         const listing = await this.prisma.repostListing.findUnique({ where: { id } });
-        if (!listing) throw new NotFoundException("Repost listing not found");
+        if (!listing || listing.isDeleted) throw new NotFoundException("Repost listing not found");
         if (listing.sellerId !== sellerId) throw new ForbiddenException("Not your listing");
 
         const updated = await this.prisma.repostListing.update({
@@ -332,7 +336,7 @@ export class RepostListingService {
 
     async toggleActive(id: string, sellerId: string, dto: ToggleActiveDto) {
         const listing = await this.prisma.repostListing.findUnique({ where: { id } });
-        if (!listing) throw new NotFoundException("Repost listing not found");
+        if (!listing || listing.isDeleted) throw new NotFoundException("Repost listing not found");
         if (listing.sellerId !== sellerId) throw new ForbiddenException("Not your listing");
 
         const updated = await this.prisma.repostListing.update({
@@ -354,7 +358,7 @@ export class RepostListingService {
 
     async remove(id: string, sellerId: string) {
         const listing = await this.prisma.repostListing.findUnique({ where: { id } });
-        if (!listing) throw new NotFoundException("Repost listing not found");
+        if (!listing || listing.isDeleted) throw new NotFoundException("Repost listing not found");
         if (listing.sellerId !== sellerId) throw new ForbiddenException("Not your listing");
 
         await this.notifications.sendToUser(sellerId, {
@@ -364,7 +368,13 @@ export class RepostListingService {
             data: { listingId: id },
         });
 
-        return this.prisma.repostListing.delete({ where: { id } });
+        // Soft-delete: orders keep a listingId FK, so hard-deleting a listing that
+        // has any order history (even completed/refunded) violates
+        // repost_orders_listingId_fkey. Hide it instead of removing the row.
+        return this.prisma.repostListing.update({
+            where: { id },
+            data: { isDeleted: true, isActive: false, isPaused: true },
+        });
     }
 
     getSpotlightListings(sellerId?: string) {
@@ -373,6 +383,7 @@ export class RepostListingService {
                 isSpotlight: true,
                 isActive: true,
                 isPaused: false,
+                isDeleted: false,
                 ...(sellerId && { sellerId: { not: sellerId } }),
             },
             include: {
@@ -396,7 +407,7 @@ export class RepostListingService {
 
     getSellerDashboard(sellerId: string) {
         return this.prisma.repostListing.findMany({
-            where: { sellerId },
+            where: { sellerId, isDeleted: false },
             include: {
                 _count: { select: { repostOrders: true } },
             },

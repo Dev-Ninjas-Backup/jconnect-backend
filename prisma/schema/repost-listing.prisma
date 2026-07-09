@@ -9,6 +9,7 @@ model RepostListing {
   isActive          Boolean         @default(true)
   isPaused          Boolean         @default(false)
   isSpotlight       Boolean         @default(false)
+  isDeleted         Boolean         @default(false)
   defaultTurnaround RepostTimeframe @default(TWENTY_FOUR_HOURS)
 
   // Analytics counters
