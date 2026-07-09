@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional, PartialType } from "@nestjs/swagger";
 import { RepostPlatform, RepostTimeframe } from "@prisma/client";
-import { IsBoolean, IsEnum, IsInt, IsOptional, IsString, Min } from "class-validator";
+import { IsBoolean, IsEnum, IsInt, IsOptional, IsString, Max, Min } from "class-validator";
 
 export class CreateRepostListingDto {
     @ApiProperty({ enum: RepostPlatform, example: RepostPlatform.INSTAGRAM_STORY })
@@ -11,6 +11,7 @@ export class CreateRepostListingDto {
     @IsOptional()
     @IsInt()
     @Min(0)
+    @Max(2_147_483_647)
     followerCount?: number;
 
     @ApiPropertyOptional({ example: "I will repost your content on my Instagram Story" })
