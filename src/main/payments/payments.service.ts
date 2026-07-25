@@ -9,7 +9,7 @@ import {
     Logger,
     NotFoundException,
 } from "@nestjs/common";
-import { OrderStatus, Role } from "@prisma/client";
+import { OrderStatus, Role, ServiceRequestStatus } from "@prisma/client";
 import { NotificationType } from "src/lib/firebase/dto/notification.dto";
 import { MailService } from "src/lib/mail/mail.service";
 import { PrismaService } from "src/lib/prisma/prisma.service";
@@ -28,6 +28,36 @@ export class PaymentService {
         private readonly mail: MailService,
         private readonly firebaseNotificationService: FirebaseNotificationService,
     ) {}
+
+    /** Sync chat card status when order is cancelled (Paid → Cancelled). */
+    private async markLinkedServiceRequestCancelled(order: {
+        serviceRequestId?: string | null;
+        buyerId: string;
+        serviceId: string;
+    }) {
+        if (order.serviceRequestId) {
+            await this.prisma.serviceRequest.update({
+                where: { id: order.serviceRequestId },
+                data: { status: ServiceRequestStatus.CANCELLED },
+            });
+            return;
+        }
+
+        const serviceRequest = await this.prisma.serviceRequest.findFirst({
+            where: {
+                buyerId: order.buyerId,
+                serviceId: order.serviceId,
+            },
+            orderBy: { createdAt: "desc" },
+        });
+
+        if (serviceRequest) {
+            await this.prisma.serviceRequest.update({
+                where: { id: serviceRequest.id },
+                data: { status: ServiceRequestStatus.CANCELLED },
+            });
+        }
+    }
 
     async createCustomerID(user: any) {
         const customers = await this.stripe.customers.create({
@@ -813,7 +843,7 @@ export class PaymentService {
         if (serviceRequestId) {
             await this.prisma.serviceRequest.update({
                 where: { id: serviceRequestId },
-                data: { isPaid: true },
+                data: { isPaid: true, status: ServiceRequestStatus.PAID },
             });
         }
         // ------------------- notify seller with firebase notification -------------------
@@ -1285,6 +1315,7 @@ export class PaymentService {
                     platformFee: 0,
                 },
             });
+            await this.markLinkedServiceRequestCancelled(order);
 
             await this.mail.sendEmail(
                 order.buyer.email,
@@ -1398,6 +1429,7 @@ export class PaymentService {
                 buyerPay: 0,
             },
         });
+        await this.markLinkedServiceRequestCancelled(order);
 
         // 5) Send Email to Buyer
         await this.mail.sendEmail(

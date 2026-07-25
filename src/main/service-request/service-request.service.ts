@@ -6,6 +6,7 @@ import { AwsService } from "@main/aws/aws.service";
 import { FirebaseNotificationService } from "@main/shared/notification/firebase-notification.service";
 import { EVENT_TYPES } from "@main/shared/notification/interface/events.name";
 import { EventEmitter2 } from "@nestjs/event-emitter";
+import { ServiceRequestStatus } from "@prisma/client";
 import { NotificationType } from "src/lib/firebase/dto/notification.dto";
 import { CreateServiceRequestDto } from "./dto/create-service-request.dto";
 
@@ -121,7 +122,10 @@ export class ServiceRequestService {
 
         return this.prisma.serviceRequest.update({
             where: { id },
-            data: { isPaid },
+            data: {
+                isPaid,
+                status: isPaid ? ServiceRequestStatus.PAID : ServiceRequestStatus.PENDING,
+            },
             include: {
                 service: { include: { creator: { omit: { password: true } } } },
                 buyer: { omit: { password: true } },

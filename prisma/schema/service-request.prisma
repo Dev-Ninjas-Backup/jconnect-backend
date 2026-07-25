@@ -1,3 +1,9 @@
+enum ServiceRequestStatus {
+  PENDING
+  PAID
+  CANCELLED
+}
+
 model ServiceRequest {
   id        String  @id @default(uuid())
   serviceId String?
@@ -8,6 +14,7 @@ model ServiceRequest {
   promotionDate         DateTime?
   specialNotes          String?
   price                 Float?    @default(0)
+  status                ServiceRequestStatus @default(PENDING)
   isPaid                Boolean   @default(false)
   isDeclined            Boolean   @default(false)
   isAccepted            Boolean   @default(false)

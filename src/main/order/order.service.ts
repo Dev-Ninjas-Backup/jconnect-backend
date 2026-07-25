@@ -8,7 +8,7 @@ import {
 
 import { HandleError } from "@common/error/handle-error.decorator";
 import { FirebaseNotificationService } from "@main/shared/notification/firebase-notification.service";
-import { OrderStatus, Role } from "@prisma/client";
+import { OrderStatus, Role, ServiceRequestStatus } from "@prisma/client";
 import { NotificationType } from "src/lib/firebase/dto/notification.dto";
 import { MailService } from "src/lib/mail/mail.service";
 import { PrismaService } from "src/lib/prisma/prisma.service";
@@ -23,6 +23,37 @@ export class OrdersService {
         @Inject("STRIPE_CLIENT")
         private readonly stripe: Stripe,
     ) {}
+
+    /** Sync chat card status when order is cancelled (Paid → Cancelled). */
+    private async markLinkedServiceRequestCancelled(order: {
+        id: string;
+        serviceRequestId?: string | null;
+        buyerId: string;
+        serviceId: string;
+    }) {
+        if (order.serviceRequestId) {
+            await this.prisma.serviceRequest.update({
+                where: { id: order.serviceRequestId },
+                data: { status: ServiceRequestStatus.CANCELLED },
+            });
+            return;
+        }
+
+        const serviceRequest = await this.prisma.serviceRequest.findFirst({
+            where: {
+                buyerId: order.buyerId,
+                serviceId: order.serviceId,
+            },
+            orderBy: { createdAt: "desc" },
+        });
+
+        if (serviceRequest) {
+            await this.prisma.serviceRequest.update({
+                where: { id: serviceRequest.id },
+                data: { status: ServiceRequestStatus.CANCELLED },
+            });
+        }
+    }
 
     //----------------------- CREATE ORDER -----------------------
     @HandleError("Failed to create order")
@@ -162,6 +193,7 @@ export class OrdersService {
                             status: OrderStatus.CANCELLED,
                         },
                     });
+                    await this.markLinkedServiceRequestCancelled(order);
 
                     // Send email notification to seller about cancel request
                     try {
@@ -202,6 +234,7 @@ export class OrdersService {
                             status: OrderStatus.CANCELLED,
                         },
                     });
+                    await this.markLinkedServiceRequestCancelled(order);
                     // Send email notification to seller about successful cancellation
                     try {
                         await this.mail.sendEmail(
@@ -245,6 +278,7 @@ export class OrdersService {
                                 platformFee: 0,
                             },
                         });
+                        await this.markLinkedServiceRequestCancelled(order);
                         // Send email notification to buyer about successful cancellation
                         try {
                             await this.mail.sendEmail(
