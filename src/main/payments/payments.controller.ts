@@ -31,7 +31,7 @@ import { PaymentService } from "./payments.service";
 @ApiTags("Payment")
 @Controller("payments")
 export class PaymentController {
-    constructor(private readonly paymentService: PaymentService) {}
+    constructor(private readonly paymentService: PaymentService) { }
 
     @ApiBearerAuth()
     @ValidateUser()
@@ -203,17 +203,25 @@ export class PaymentController {
                 serviceId: { type: "string" },
                 frontendUrl: {
                     type: "string",
-                    example: "https://shamimrana2006.github.io/shamimrana2006",
+                    example: "https://google.com",
+                },
+                serviceRequestId: {
+                    type: "string",
+                    description: "Optional ServiceRequest ID to link order details (instructions, notes, files)",
                 },
             },
             required: ["serviceId", "frontendUrl"],
         },
     })
-    async createSession(@GetUser() user, @Body() body: { serviceId: string; frontendUrl: string }) {
+    async createSession(
+        @GetUser() user,
+        @Body() body: { serviceId: string; frontendUrl: string; serviceRequestId?: string },
+    ) {
         return this.paymentService.createOrderWithPaymentMethod(
             user,
             body.serviceId,
             body.frontendUrl,
+            body.serviceRequestId,
         );
     }
 

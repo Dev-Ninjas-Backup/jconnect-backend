@@ -70,6 +70,15 @@ export class OrdersService {
             where: { id },
             include: {
                 service: true,
+                serviceRequest: {
+                    select: {
+                        id: true,
+                        captionOrInstructions: true,
+                        specialNotes: true,
+                        promotionDate: true,
+                        uploadedFileUrl: true,
+                    },
+                },
                 buyer: {
                     select: {
                         full_name: true,
@@ -93,7 +102,34 @@ export class OrdersService {
 
         if (!order) throw new NotFoundException("Order not found");
 
-        return order;
+        let serviceRequest = order.serviceRequest;
+
+        if (!serviceRequest) {
+            serviceRequest = await this.prisma.serviceRequest.findFirst({
+                where: {
+                    buyerId: order.buyerId,
+                    serviceId: order.serviceId,
+                },
+                orderBy: { createdAt: "desc" },
+                select: {
+                    id: true,
+                    captionOrInstructions: true,
+                    specialNotes: true,
+                    promotionDate: true,
+                    uploadedFileUrl: true,
+                },
+            });
+        }
+
+        const { serviceRequest: _serviceRequest, ...orderData } = order;
+
+        return {
+            ...orderData,
+            captionOrInstructions: serviceRequest?.captionOrInstructions ?? null,
+            specialNotes: serviceRequest?.specialNotes ?? null,
+            promotionDate: serviceRequest?.promotionDate ?? null,
+            files: serviceRequest?.uploadedFileUrl ?? [],
+        };
     }
 
     // ----------------------UPDATE ORDER STATUS---------------------------

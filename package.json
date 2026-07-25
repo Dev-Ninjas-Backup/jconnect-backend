@@ -18,7 +18,7 @@
     "prisma:generate": "npx prisma generate",
     "prisma:migrate": "npx prisma migrate deploy",
     "prisma:reset": "npx prisma migrate reset",
-    "start:docker": "prisma generate && prisma migrate deploy && node dist/main",
+    "start:docker": "./docker-entrypoint.sh",
     "lint:fix": "eslint . --ext .ts,.js,.jsx,.tsx --fix",
     "format:fix": "prettier --ignore-path .gitignore --write \"**/*.+(js|ts|json)\"",
     "ci:fix": "npm run format:fix",

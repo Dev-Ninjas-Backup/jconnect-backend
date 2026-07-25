@@ -27,15 +27,21 @@ FROM node:20-alpine
 
 WORKDIR /app
 
+RUN apk add --no-cache openssl libc6-compat
+
 # Copy build output & dependencies
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/prisma.config.ts ./prisma.config.ts
+COPY --from=builder /app/scripts/docker-entrypoint.sh ./docker-entrypoint.sh
+
+RUN chmod +x ./docker-entrypoint.sh
 
 # Set production env
 ENV NODE_ENV=production
 EXPOSE 5056
 
-CMD ["npm", "run", "start:docker"]
+# Runs: wait for DB → migrate deploy → generate → start app
+CMD ["./docker-entrypoint.sh"]

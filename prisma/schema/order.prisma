@@ -19,6 +19,7 @@ model Order {
   sellerId             String
   sellerIdStripe       String?
   serviceId            String
+  serviceRequestId     String?
   paymentIntentId      String?     @unique // Stripe Payment Intent ID
   buyerPay             Int         @default(0)
   platformFee          Int
@@ -38,7 +39,8 @@ model Order {
   isCancalProofSubmitted Boolean  @default(false)
 
   //                   Relations
-  buyer   User    @relation("OrderBuyer", fields: [buyerId], references: [id], onDelete: Cascade)
-  seller  User    @relation("OrderSeller", fields: [sellerId], references: [id], onDelete: Cascade)
-  service Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  buyer          User            @relation("OrderBuyer", fields: [buyerId], references: [id], onDelete: Cascade)
+  seller         User            @relation("OrderSeller", fields: [sellerId], references: [id], onDelete: Cascade)
+  service        Service         @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  serviceRequest ServiceRequest? @relation(fields: [serviceRequestId], references: [id], onDelete: SetNull)
 }

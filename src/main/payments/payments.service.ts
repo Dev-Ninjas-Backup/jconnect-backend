@@ -732,7 +732,12 @@ export class PaymentService {
 
     // ------------------ create order with payment method  with notification ------------------
     @HandleError("createOrderWithPaymentMethod error")
-    async createOrderWithPaymentMethod(userFromReq: any, serviceId: string, frontendUrl: string) {
+    async createOrderWithPaymentMethod(
+        userFromReq: any,
+        serviceId: string,
+        frontendUrl: string,
+        serviceRequestId?: string,
+    ) {
         const user = await this.prisma.user.findUnique({
             where: { id: userFromReq.userId },
             include: { paymentMethod: true },
@@ -746,6 +751,21 @@ export class PaymentService {
         if (!user.customerIdStripe)
             throw new BadRequestException("User does not have a Stripe Customer ID");
         if (!service) throw new NotFoundException("Service not found");
+
+        if (serviceRequestId) {
+            const serviceRequest = await this.prisma.serviceRequest.findUnique({
+                where: { id: serviceRequestId },
+            });
+            if (!serviceRequest) {
+                throw new NotFoundException("Service request not found");
+            }
+            if (serviceRequest.buyerId !== userFromReq.userId) {
+                throw new BadRequestException("Service request does not belong to this buyer");
+            }
+            if (serviceRequest.serviceId && serviceRequest.serviceId !== serviceId) {
+                throw new BadRequestException("Service request does not match this service");
+            }
+        }
 
         const setting = await this.prisma.setting.findUnique({
             where: { id: "platform_settings" },
@@ -768,6 +788,7 @@ export class PaymentService {
             metadata: {
                 userId: userFromReq.userId,
                 serviceId: service.id,
+                ...(serviceRequestId && { serviceRequestId }),
             },
         });
         const priceInCents = Math.round(service.price);
@@ -780,6 +801,7 @@ export class PaymentService {
                 sellerIdStripe: service.creator?.sellerIDStripe || "",
                 paymentIntentId: paymentIntent.id,
                 serviceId: service.id,
+                ...(serviceRequestId && { serviceRequestId }),
                 platformFee: feeAmount,
                 platformFee_percents: setting?.platformFee_percents,
                 amount: service.price,
@@ -787,6 +809,13 @@ export class PaymentService {
                 status: OrderStatus.PENDING,
             },
         });
+
+        if (serviceRequestId) {
+            await this.prisma.serviceRequest.update({
+                where: { id: serviceRequestId },
+                data: { isPaid: true },
+            });
+        }
         // ------------------- notify seller with firebase notification -------------------
         await this.firebaseNotificationService.sendToUser(
             service.creatorId!,
