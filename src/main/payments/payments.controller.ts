@@ -8,6 +8,7 @@ import {
     Headers,
     HttpCode,
     HttpStatus,
+    InternalServerErrorException,
     Param,
     Post,
     Query,
@@ -32,6 +33,28 @@ import { PaymentService } from "./payments.service";
 @Controller("payments")
 export class PaymentController {
     constructor(private readonly paymentService: PaymentService) { }
+
+    @Get("stripe-public-key")
+    @ApiOperation({ summary: "Get Stripe publishable (public) key" })
+    @ApiResponse({
+        status: 200,
+        description: "Stripe publishable key for Stripe.js/Elements",
+    })
+    async getStripePublicKey() {
+        // This endpoint must return ONLY the publishable key (safe for browsers).
+        const publishableKey =
+            process.env.STRIPE_PUBLIC_KEY ||
+            process.env.STRIPE_PUBLISHABLE_KEY ||
+            process.env.Publisher_key;
+
+        if (!publishableKey) {
+            throw new InternalServerErrorException(
+                "Stripe public key is not configured",
+            );
+        }
+
+        return { stripePublicKey: publishableKey };
+    }
 
     @ApiBearerAuth()
     @ValidateUser()
