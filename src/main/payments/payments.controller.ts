@@ -32,7 +32,7 @@ import { PaymentService } from "./payments.service";
 @ApiTags("Payment")
 @Controller("payments")
 export class PaymentController {
-    constructor(private readonly paymentService: PaymentService) { }
+    constructor(private readonly paymentService: PaymentService) {}
 
     @Get("stripe-public-key")
     @ApiOperation({ summary: "Get Stripe publishable (public) key" })
@@ -48,9 +48,7 @@ export class PaymentController {
             process.env.Publisher_key;
 
         if (!publishableKey) {
-            throw new InternalServerErrorException(
-                "Stripe public key is not configured",
-            );
+            throw new InternalServerErrorException("Stripe public key is not configured");
         }
 
         return { stripePublicKey: publishableKey };
@@ -230,7 +228,8 @@ export class PaymentController {
                 },
                 serviceRequestId: {
                     type: "string",
-                    description: "Optional ServiceRequest ID to link order details (instructions, notes, files)",
+                    description:
+                        "Optional ServiceRequest ID to link order details (instructions, notes, files)",
                 },
             },
             required: ["serviceId", "frontendUrl"],

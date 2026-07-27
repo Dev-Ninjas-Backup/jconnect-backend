@@ -13,6 +13,7 @@ import { NotificationType } from "src/lib/firebase/dto/notification.dto";
 import { MailService } from "src/lib/mail/mail.service";
 import { PrismaService } from "src/lib/prisma/prisma.service";
 import Stripe from "stripe";
+import { OrderGateway } from "./order.gateway";
 
 @Injectable()
 export class OrdersService {
@@ -20,6 +21,7 @@ export class OrdersService {
         private prisma: PrismaService,
         private mail: MailService,
         private readonly firebaseNotificationService: FirebaseNotificationService,
+        private readonly orderGateway: OrderGateway,
         @Inject("STRIPE_CLIENT")
         private readonly stripe: Stripe,
     ) {}
@@ -80,6 +82,7 @@ export class OrdersService {
             },
         });
 
+        this.orderGateway.emitOrderCreated(order);
         return order;
     }
 
@@ -224,6 +227,7 @@ export class OrdersService {
                     } catch (error) {
                         console.error("Failed to send cancellation email to buyer:", error);
                     }
+                    this.orderGateway.emitCancelled(updated);
                     return { ...updated, message: "Order cancelled successfully" };
                 }
                 if (isSeller) {
@@ -249,6 +253,7 @@ export class OrdersService {
                     } catch (error) {
                         console.error("Failed to send cancellation email to seller:", error);
                     }
+                    this.orderGateway.emitCancelled(updated);
                     return { ...updated, message: "Order cancelled successfully" };
                 }
             }
@@ -307,6 +312,7 @@ export class OrdersService {
                         } catch (error) {
                             console.error("Failed to send cancellation email to seller:", error);
                         }
+                        this.orderGateway.emitCancelled(updated);
                         return { ...updated, message: "Order status updated successfully" };
                     }
 
@@ -691,6 +697,7 @@ export class OrdersService {
             console.error(`❌ Error sending order status notifications: ${error.message}`);
         }
 
+        this.orderGateway.emitStatusChange(updated);
         return { ...updated, message: "Order status updated successfully" };
     }
 
@@ -724,6 +731,8 @@ export class OrdersService {
         await this.prisma.order.delete({
             where: { id: orderId },
         });
+
+        this.orderGateway.emitOrderDeleted(order);
 
         return {
             message: "Order deleted successfully",
@@ -931,6 +940,7 @@ export class OrdersService {
             `📁 Update notification sent to seller ${updated.sellerId} about updated files`,
         );
 
+        this.orderGateway.emitProofSubmitted(updated);
         return updated;
     }
 
@@ -957,6 +967,7 @@ export class OrdersService {
             },
         });
 
+        this.orderGateway.emitDeliveryDateUpdated(updated);
         return updated;
     }
 
@@ -1205,6 +1216,7 @@ export class OrdersService {
                 // -------Continue even if email fails -------
             }
 
+            this.orderGateway.emitProofCancelled(updatedOrder);
             return updatedOrder;
         }
 

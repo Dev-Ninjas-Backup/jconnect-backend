@@ -1,5 +1,6 @@
 import { HandleError } from "@common/error/handle-error.decorator";
 import { errorResponse } from "@common/utilsResponse/response.util";
+import { OrderGateway } from "@main/order/order.gateway";
 import { FirebaseNotificationService } from "@main/shared/notification/firebase-notification.service";
 import {
     BadRequestException,
@@ -27,6 +28,7 @@ export class PaymentService {
         private readonly stripe: Stripe,
         private readonly mail: MailService,
         private readonly firebaseNotificationService: FirebaseNotificationService,
+        private readonly orderGateway: OrderGateway,
     ) {}
 
     /** Sync chat card status when order is cancelled (Paid → Cancelled). */
@@ -846,6 +848,9 @@ export class PaymentService {
                 data: { isPaid: true, status: ServiceRequestStatus.PAID },
             });
         }
+
+        this.orderGateway.emitOrderCreated(order);
+
         // ------------------- notify seller with firebase notification -------------------
         await this.firebaseNotificationService.sendToUser(
             service.creatorId!,
@@ -1088,6 +1093,8 @@ export class PaymentService {
             },
         });
 
+        this.orderGateway.emitReleased(updated);
+
         try {
             await this.firebaseNotificationService.sendToUser(
                 order.sellerId,
@@ -1304,7 +1311,7 @@ export class PaymentService {
         if (intent.status === "requires_capture") {
             await this.stripe.paymentIntents.cancel(order.paymentIntentId);
 
-            await this.prisma.order.update({
+            const cancelled = await this.prisma.order.update({
                 where: { id: order.id },
                 data: {
                     status: OrderStatus.CANCELLED,
@@ -1316,6 +1323,7 @@ export class PaymentService {
                 },
             });
             await this.markLinkedServiceRequestCancelled(order);
+            this.orderGateway.emitCancelled(cancelled);
 
             await this.mail.sendEmail(
                 order.buyer.email,
@@ -1430,6 +1438,7 @@ export class PaymentService {
             },
         });
         await this.markLinkedServiceRequestCancelled(order);
+        this.orderGateway.emitCancelled(updated);
 
         // 5) Send Email to Buyer
         await this.mail.sendEmail(
@@ -1761,6 +1770,7 @@ export class PaymentService {
                         data: { status: OrderStatus.RELEASED },
                     });
 
+                    this.orderGateway.emitReleased({ ...order, status: OrderStatus.RELEASED });
                     this.logger.log(`Order ${order.id} marked PAID`);
                     break;
                 }
