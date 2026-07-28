@@ -10,5 +10,6 @@ import { FirebaseNotificationService } from "../notification/firebase-notificati
     imports: [NotificationModule],
     controllers: [PrivateChatController],
     providers: [PrivateChatService, PrivateChatGateway, FirebaseNotificationService],
+    exports: [PrivateChatGateway],
 })
 export class PrivateMessageModule {}

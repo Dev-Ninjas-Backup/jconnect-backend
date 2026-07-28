@@ -65,6 +65,21 @@ socket.on("order:error", (d) => console.error("order socket error:", d.message))
 Payload = order row + `timestamp` (ISO). Emitted to buyer room, seller room, and
 `order:<id>` if joined.
 
+### Chat card sync on cancel / refund
+
+When an order is cancelled or refunded, the linked chat card (`ServiceRequest`) is also
+updated: `status` → `CANCELLED` (Paid → Cancelled).
+
+That card update is **not** on `/order`. It is pushed on the private-chat namespace:
+
+| Namespace | Event | Audience |
+| --------- | ----- | -------- |
+| `/dj/chat` | `serviceRequestUpdated` | Buyer + seller (service creator) |
+
+Triggers: `PATCH /orders/:id/status?status=CANCELLED`, `POST /payments/refund/:orderId`.
+
+See [PRIVATE_MESSAGE_SOCKET_GUIDE.md](./PRIVATE_MESSAGE_SOCKET_GUIDE.md) for the chat socket.
+
 ### Status flow ↔ events
 
 ```
@@ -72,7 +87,7 @@ PENDING          → order:created
 IN_PROGRESS      → order:in_progress
 PROOF_SUBMITTED  → order:proof_submitted
 RELEASED         → order:released
-CANCELLED        → order:cancelled
+CANCELLED        → order:cancelled  (+ serviceRequestUpdated on /dj/chat)
 ```
 
 ## Minimal client example
@@ -90,6 +105,9 @@ socket.on("order:in_progress", (o) => { /* seller started */ });
 socket.on("order:proof_submitted", (o) => { /* review proof */ });
 socket.on("order:released", (o) => { /* done */ });
 socket.on("order:cancelled", (o) => { /* cancelled */ });
+
+// Chat card Paid → Cancelled is on /dj/chat (serviceRequestUpdated), not here.
+// See PRIVATE_MESSAGE_SOCKET_GUIDE.md
 
 // optional: focus a detail screen
 socket.emit("order:join_order", orderId);

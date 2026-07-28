@@ -112,8 +112,21 @@ Errors:
 | `private:conversation_list` | After `private:load_conversations` | Array of conversations |
 | `private:new_conversation` | After `private:load_single_conversation` **or** first message in a new thread | Single conversation (+ messages) **or** full list (see note above) |
 | `private:new_message` | Message created (socket or helper) | Message row + `sender`, `service`, `serviceRequest` |
-| `serviceRequestUpdated` | Service request status changed (emitted by gateway helpers) | Updated service request |
+| `serviceRequestUpdated` | Service request changed (accept/decline, or Paid → Cancelled on order cancel/refund) | Updated service request (+ `buyer`, `service.creator`) |
 | `serviceRequestFilesUpdated` | Service request files changed | Updated service request |
+
+### `serviceRequestUpdated` triggers
+
+Emitted to the buyer room and the seller (`service.creator`) room when:
+
+| Trigger | REST / path | Typical `status` |
+| ------- | ----------- | ---------------- |
+| Accept / decline chat request | `PATCH /private-chat/:id/is-declined` | unchanged (`isAccepted` / `isDeclined`) |
+| Order cancelled | `PATCH /orders/:id/status?status=CANCELLED` | `CANCELLED` (was `PAID`) |
+| Order refunded | `POST /payments/refund/:orderId` | `CANCELLED` (was `PAID`) |
+
+Use this event to update the chat card button live (e.g. **Paid** → **Cancelled**) without refresh.
+Order lifecycle events stay on `/order` — see [ORDER_SOCKET_GUIDE.md](./ORDER_SOCKET_GUIDE.md).
 
 ### Example `private:new_message` payload
 
@@ -160,6 +173,10 @@ socket.on("private:conversation_list", (list) => {
 
 socket.on("private:new_message", (msg) => {
   // append to open thread / bump inbox
+});
+
+socket.on("serviceRequestUpdated", (sr) => {
+  // chat card: e.g. sr.status === "CANCELLED" after cancel/refund
 });
 
 socket.emit("private:send_message", {
