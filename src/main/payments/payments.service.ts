@@ -2,6 +2,7 @@ import { HandleError } from "@common/error/handle-error.decorator";
 import { errorResponse } from "@common/utilsResponse/response.util";
 import { OrderGateway } from "@main/order/order.gateway";
 import { FirebaseNotificationService } from "@main/shared/notification/firebase-notification.service";
+import { PrivateChatGateway } from "@main/shared/private-message/privateChatGateway/privateChatGateway";
 import {
     BadRequestException,
     HttpException,
@@ -18,6 +19,29 @@ import Stripe from "stripe";
 import { ConfirmSetupIntentDto } from "./dto/confirm-setup-intent.dto";
 import { PaginationDto } from "./dto/pagination.dto";
 
+const serviceRequestSocketInclude = {
+    service: {
+        include: {
+            creator: {
+                select: {
+                    id: true,
+                    full_name: true,
+                    profilePhoto: true,
+                    username: true,
+                },
+            },
+        },
+    },
+    buyer: {
+        select: {
+            id: true,
+            full_name: true,
+            profilePhoto: true,
+            username: true,
+        },
+    },
+} as const;
+
 @Injectable()
 export class PaymentService {
     private readonly logger = new Logger(PaymentService.name);
@@ -29,36 +53,37 @@ export class PaymentService {
         private readonly mail: MailService,
         private readonly firebaseNotificationService: FirebaseNotificationService,
         private readonly orderGateway: OrderGateway,
+        private readonly privateChatGateway: PrivateChatGateway,
     ) {}
 
-    /** Sync chat card status when order is cancelled (Paid → Cancelled). */
+    /** Sync chat card status when order is cancelled (Paid → Cancelled) + live socket. */
     private async markLinkedServiceRequestCancelled(order: {
         serviceRequestId?: string | null;
         buyerId: string;
         serviceId: string;
     }) {
-        if (order.serviceRequestId) {
-            await this.prisma.serviceRequest.update({
-                where: { id: order.serviceRequestId },
-                data: { status: ServiceRequestStatus.CANCELLED },
+        let serviceRequestId = order.serviceRequestId;
+
+        if (!serviceRequestId) {
+            const serviceRequest = await this.prisma.serviceRequest.findFirst({
+                where: {
+                    buyerId: order.buyerId,
+                    serviceId: order.serviceId,
+                },
+                orderBy: { createdAt: "desc" },
             });
-            return;
+            serviceRequestId = serviceRequest?.id;
         }
 
-        const serviceRequest = await this.prisma.serviceRequest.findFirst({
-            where: {
-                buyerId: order.buyerId,
-                serviceId: order.serviceId,
-            },
-            orderBy: { createdAt: "desc" },
+        if (!serviceRequestId) return;
+
+        const updated = await this.prisma.serviceRequest.update({
+            where: { id: serviceRequestId },
+            data: { status: ServiceRequestStatus.CANCELLED },
+            include: serviceRequestSocketInclude,
         });
 
-        if (serviceRequest) {
-            await this.prisma.serviceRequest.update({
-                where: { id: serviceRequest.id },
-                data: { status: ServiceRequestStatus.CANCELLED },
-            });
-        }
+        this.privateChatGateway.emitServiceRequestUpdate(updated);
     }
 
     async createCustomerID(user: any) {

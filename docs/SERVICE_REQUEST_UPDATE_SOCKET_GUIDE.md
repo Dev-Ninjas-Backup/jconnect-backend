@@ -4,6 +4,16 @@
 
 This guide explains how to update a service request and receive real-time notifications via WebSocket to both the buyer and seller (service creator).
 
+`ServiceRequest.status` values: `PENDING` → `PAID` → `CANCELLED`.
+
+| Trigger | How | Socket event |
+| ------- | --- | ------------ |
+| Accept / decline | `PATCH /private-chat/:id/is-declined` | `serviceRequestUpdated` on `/dj/chat` |
+| Order cancel | `PATCH /orders/:id/status?status=CANCELLED` | same (`status: CANCELLED`) |
+| Order refund | `POST /payments/refund/:orderId` | same (`status: CANCELLED`) |
+
+Cancel/refund also emits `order:cancelled` on `/order` — see [ORDER_SOCKET_GUIDE.md](./ORDER_SOCKET_GUIDE.md). Listen to `serviceRequestUpdated` to flip the chat card (**Paid** → **Cancelled**) live.
+
 ---
 
 ## Architecture Flow
@@ -16,19 +26,20 @@ This guide explains how to update a service request and receive real-time notifi
 └──────┬──────┘
        │
        │ 1. HTTP PATCH Request
+       │    (accept/decline OR order cancel/refund)
        │
        ▼
 ┌─────────────────────────────────────┐
 │  PATCH /private-chat/:id/is-declined│
-│  Controller: updateIsDeclined()      │
+│  OR order cancel / payment refund   │
 └──────┬──────────────────────────────┘
        │
        │ 2. Update Database
        │
        ▼
 ┌─────────────────────────────────────┐
-│  Service: updateIsDeclined()         │
-│  - Update ServiceRequest in DB       │
+│  Service updates ServiceRequest      │
+│  - status → CANCELLED (on cancel)    │
 │  - Include buyer & creator info      │
 └──────┬──────────────────────────────┘
        │
@@ -39,6 +50,8 @@ This guide explains how to update a service request and receive real-time notifi
 │  Gateway: emitServiceRequestUpdate() │
 │  - Emit to buyer's room              │
 │  - Emit to seller's room             │
+│  Event: serviceRequestUpdated        │
+│  Namespace: /dj/chat                 │
 └──────┬──────────────────────────────┘
        │
        │ 4. Real-time notification
@@ -139,11 +152,11 @@ serviceRequestUpdated
 ### Event Flow
 
 1. **User connects to WebSocket** → Automatically joins room with their `userId`
-2. **Service request is updated via REST API** → Database updated
+2. **Service request is updated** via accept/decline REST **or** order cancel / refund → Database updated (`status: CANCELLED` on cancel/refund)
 3. **Gateway emits to specific rooms:**
     - `buyer.id` room → Buyer receives notification
     - `service.creator.id` room → Seller receives notification
-4. **Both users receive the same updated data in real-time**
+4. **Both users receive the same updated data in real-time** (use `data.status === "CANCELLED"` to update the chat card)
 
 ---
 
