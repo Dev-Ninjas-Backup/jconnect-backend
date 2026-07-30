@@ -203,10 +203,13 @@ export class NotificationGateway
 
             this.logger.log(`--- Processing recipient: ${recipient.id} (${recipient.email}) ---`);
 
+            // title === message, same shape as FCM (where title === body)
+            const title = `New User Registered: ${payload.info.name} has registered as ${payload.info.role}`;
+
             const notificationData: Notification = {
                 type: EVENT_TYPES.USERREGISTRATION_CREATE,
-                title: "New User Registered",
-                message: `${payload.info.name} has registered as ${payload.info.role}`,
+                title,
+                message: title,
                 createdAt: new Date(),
                 meta: {
                     id: payload.info.id,
@@ -290,10 +293,13 @@ export class NotificationGateway
                 this.logger.warn(`No active socket for user ${recipient.id}`);
             }
 
+            // title === message, same shape as FCM (where title === body)
+            const title = `New Service Created: ${payload.info.serviceName} has been created.`;
+
             const socketPayload: Notification = {
                 type: EVENT_TYPES.SERVICE_CREATE,
-                title: "New Service Created",
-                message: `${payload.info.serviceName} has been created.`,
+                title,
+                message: title,
                 createdAt: new Date(),
                 meta: {
                     ...payload.meta,
@@ -339,12 +345,16 @@ export class NotificationGateway
                     continue;
                 }
 
+                // title === message, same shape as FCM (where title === body)
+                const inquiryBody =
+                    payload.info.message ||
+                    ` like your profile and I wanna buy your service created by ${payload.info.username}`;
+                const title = `New Inquiry Received: ${inquiryBody}`;
+
                 const notificationData = {
                     type: EVENT_TYPES.INQUIRY_CREATE,
-                    title: "New Inquiry Received",
-                    message:
-                        payload.info.message ||
-                        ` like your profile and I wanna buy your service created by ${payload.info.username}`,
+                    title,
+                    message: title,
                     createdAt: new Date(),
                     meta: {
                         inquirerId: payload.info.id,
@@ -417,10 +427,13 @@ export class NotificationGateway
 
         try {
             const buyerId = payload.info.buyerId;
+            // title === message, same shape as FCM (where title === body)
+            const title = `Service Request Accepted: ${payload.info.sellerName} has accepted your service request for "${payload.info.serviceName}"`;
+
             const notificationData = {
                 type: EVENT_TYPES.SERVICE_REQUEST_ACCEPTED,
-                title: " Service Request Accepted",
-                message: `${payload.info.sellerName} has accepted your service request for "${payload.info.serviceName}"`,
+                title,
+                message: title,
                 createdAt: new Date(),
                 meta: {
                     serviceRequestId: payload.info.serviceRequestId,
@@ -541,10 +554,13 @@ export class NotificationGateway
 
         try {
             const buyerId = payload.info.buyerId;
+            // title === message, same shape as FCM (where title === body)
+            const title = `Service Request Declined: ${payload.info.sellerName} has declined your service request for "${payload.info.serviceName}"`;
+
             const notificationData = {
                 type: EVENT_TYPES.SERVICE_REQUEST_DECLINED,
-                title: " Service Request Declined",
-                message: `${payload.info.sellerName} has declined your service request for "${payload.info.serviceName}"`,
+                title,
+                message: title,
                 createdAt: new Date(),
                 meta: {
                     serviceRequestId: payload.info.serviceRequestId,

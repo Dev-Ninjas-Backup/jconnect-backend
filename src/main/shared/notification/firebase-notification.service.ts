@@ -338,18 +338,26 @@ export class FirebaseNotificationService {
 
     /**
      *------------------  Save notification to database ------------------
+     *
+     * FCM sends have `title === body`. The in-app Notification row stores both
+     * columns with the same value so the UI can render the FCM-equivalent text
+     * consistently regardless of channel.
      */
     private async saveNotificationToDb(
         userId: string,
         notification: NotificationTemplate,
     ): Promise<void> {
         try {
+            // FCM keeps title === body. Mirror that into the in-app DB row so
+            // the saved notification always shows the same text in both columns.
+            const text = notification.title || notification.body;
+
             // -------------- Create notification record with userId ----------------
             const notificationRecord = await this.prisma.notification.create({
                 data: {
                     userId: userId,
-                    title: notification.title,
-                    message: notification.body,
+                    title: text,
+                    message: text,
                     metadata: notification.data || {},
                 },
             });
@@ -400,70 +408,62 @@ export class FirebaseNotificationService {
         type: NotificationType,
         data: Record<string, any>,
     ): NotificationTemplate {
-        const templates: Record<NotificationType, (data: any) => NotificationTemplate> = {
+        // Each builder returns a partial template. We then force `body` to match
+        // `title` so FCM and the in-app notification carry identical text,
+        // matching the FCM rule where title === body.
+        const builders: Record<NotificationType, (d: any) => Omit<NotificationTemplate, "body">> = {
             [NotificationType.NEW_MESSAGE]: (d) => ({
-                title: "New Message",
-                body: `${d.senderName} sent you a message: ${d.messagePreview}`,
+                title: `New Message from ${d.senderName}: ${d.messagePreview}`,
                 type: NotificationType.NEW_MESSAGE,
                 data: { senderId: d.senderId, conversationId: d.conversationId },
             }),
             [NotificationType.NEW_FOLLOWER]: (d) => ({
-                title: "New Follower",
-                body: `${d.followerName} started following you`,
+                title: `New Follower: ${d.followerName} started following you`,
                 type: NotificationType.NEW_FOLLOWER,
                 data: { followerId: d.followerId },
             }),
             [NotificationType.NEW_LIKE]: (d) => ({
-                title: "New Like",
-                body: `${d.userName} liked your ${d.contentType}`,
+                title: `New Like: ${d.userName} liked your ${d.contentType}`,
                 type: NotificationType.NEW_LIKE,
                 data: { userId: d.userId, contentId: d.contentId, contentType: d.contentType },
             }),
             [NotificationType.NEW_COMMENT]: (d) => ({
-                title: "New Comment",
-                body: `${d.userName} commented on your ${d.contentType}: ${d.commentPreview}`,
+                title: `New Comment: ${d.userName} commented on your ${d.contentType} - ${d.commentPreview}`,
                 type: NotificationType.NEW_COMMENT,
                 data: { userId: d.userId, contentId: d.contentId, commentId: d.commentId },
             }),
             [NotificationType.SERVICE_REQUEST]: (d) => ({
-                title: "New Service Request",
-                body: `${d.clientName} requested your ${d.serviceName} service`,
+                title: `New Service Request: ${d.clientName} requested your ${d.serviceName} service`,
                 type: NotificationType.SERVICE_REQUEST,
                 data: { requestId: d.requestId, serviceId: d.serviceId },
             }),
             [NotificationType.ORDER_UPDATE]: (d) => ({
-                title: "Order Update",
-                body: `Your order #${d.orderId} status: ${d.status}`,
+                title: `Order Update: Your order #${d.orderId} status: ${d.status}`,
                 type: NotificationType.ORDER_UPDATE,
                 data: { orderId: d.orderId, status: d.status },
             }),
             [NotificationType.PAYMENT_RECEIVED]: (d) => ({
-                title: "Payment Received",
-                body: `You received $${d.amount} from ${d.payerName}`,
+                title: `Payment Received: You received $${d.amount} from ${d.payerName}`,
                 type: NotificationType.PAYMENT_RECEIVED,
                 data: { paymentId: d.paymentId, amount: d.amount.toString() },
             }),
             [NotificationType.REVIEW_RECEIVED]: (d) => ({
-                title: "New Review",
-                body: `${d.reviewerName} left you a ${d.rating}-star review`,
+                title: `New Review: ${d.reviewerName} left you a ${d.rating}-star review`,
                 type: NotificationType.REVIEW_RECEIVED,
                 data: { reviewId: d.reviewId, rating: d.rating.toString() },
             }),
             [NotificationType.ANNOUNCEMENT]: (d) => ({
-                title: d.title || "Announcement",
-                body: d.message,
+                title: d.message || d.title || "Announcement",
                 type: NotificationType.ANNOUNCEMENT,
                 data: { announcementId: d.announcementId },
             }),
             [NotificationType.CUSTOM]: (d) => ({
-                title: d.title,
-                body: d.body,
+                title: d.body || d.title || "Notification",
                 type: NotificationType.CUSTOM,
                 data: d.data || {},
             }),
             [NotificationType.SERVICE_REQUEST_ACCEPTED]: (d) => ({
-                title: "Service Request Accepted",
-                body: `${d.sellerName} has accepted your service request for "${d.serviceName}"`,
+                title: `Service Request Accepted: ${d.sellerName} has accepted your service request for "${d.serviceName}"`,
                 type: NotificationType.SERVICE_REQUEST_ACCEPTED,
                 data: {
                     serviceRequestId: d.serviceRequestId,
@@ -475,8 +475,7 @@ export class FirebaseNotificationService {
                 },
             }),
             [NotificationType.SERVICE_REQUEST_DECLINED]: (d) => ({
-                title: "Service Request Declined",
-                body: `${d.sellerName} has declined your service request for "${d.serviceName}". Reason: ${d.reason || "No reason provided"}`,
+                title: `Service Request Declined: ${d.sellerName} has declined your service request for "${d.serviceName}". Reason: ${d.reason || "No reason provided"}`,
                 type: NotificationType.SERVICE_REQUEST_DECLINED,
                 data: {
                     serviceRequestId: d.serviceRequestId,
@@ -490,8 +489,7 @@ export class FirebaseNotificationService {
             }),
 
             [NotificationType.UPLOAD_PROOF]: (d) => ({
-                title: "Proof of Work Uploaded",
-                body: `${d.uploadedByName} has uploaded proof of work for "${d.serviceName}"`,
+                title: `Proof of Work Uploaded: ${d.uploadedByName} has uploaded proof of work for "${d.serviceName}"`,
                 type: NotificationType.UPLOAD_PROOF,
                 data: {
                     serviceRequestId: d.serviceRequestId,
@@ -502,21 +500,18 @@ export class FirebaseNotificationService {
                 },
             }),
             [NotificationType.follow]: (d) => ({
-                title: "New Follower",
-                body: `${d.followerName} started following you`,
+                title: `New Follower: ${d.followerName} started following you`,
                 type: NotificationType.follow,
                 data: { followerId: d.followerId },
             }),
 
             [NotificationType.SERVICE_UPDATE]: (d) => ({
-                title: "Service Updated",
-                body: `${d.serviceName} has been updated`,
+                title: `Service Updated: ${d.serviceName} has been updated`,
                 type: NotificationType.SERVICE_UPDATE,
                 data: { serviceId: d.serviceId },
             }),
             [NotificationType.NEW_ORDER]: (d) => ({
-                title: "New Order",
-                body: `You have a new order for "${d.serviceName}" from ${d.clientName}`,
+                title: `New Order: You have a new order for "${d.serviceName}" from ${d.clientName}`,
                 type: NotificationType.NEW_ORDER,
                 data: {
                     orderId: d.orderId,
@@ -528,11 +523,14 @@ export class FirebaseNotificationService {
             }),
         };
 
-        const template = templates[type];
-        if (!template) {
+        const builder = builders[type];
+        if (!builder) {
             throw new Error(`Unknown notification type: ${type}`);
         }
 
-        return template(data);
+        const partial = builder(data);
+        // Enforce title === body so FCM, the in-app DB row, and the socket
+        // payload all carry identical text.
+        return { ...partial, body: partial.title };
     }
 }
