@@ -10,6 +10,7 @@ import {
     Injectable,
     Logger,
     NotFoundException,
+    forwardRef,
 } from "@nestjs/common";
 import { OrderStatus, Role, ServiceRequestStatus } from "@prisma/client";
 import { NotificationType } from "src/lib/firebase/dto/notification.dto";
@@ -52,7 +53,9 @@ export class PaymentService {
         private readonly stripe: Stripe,
         private readonly mail: MailService,
         private readonly firebaseNotificationService: FirebaseNotificationService,
+        @Inject(forwardRef(() => OrderGateway))
         private readonly orderGateway: OrderGateway,
+        @Inject(forwardRef(() => PrivateChatGateway))
         private readonly privateChatGateway: PrivateChatGateway,
     ) {}
 

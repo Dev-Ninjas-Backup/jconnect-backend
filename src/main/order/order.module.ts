@@ -1,4 +1,4 @@
-import { Module } from "@nestjs/common";
+import { Module, forwardRef } from "@nestjs/common";
 
 import { AwsService } from "@main/aws/aws.service";
 import { NotificationModule } from "@main/shared/notification/notification.module";
@@ -10,7 +10,12 @@ import { OrderGateway } from "./order.gateway";
 import { OrdersService } from "./order.service";
 
 @Module({
-    imports: [StripeModule, NotificationModule, ConfigModule, PrivateMessageModule],
+    imports: [
+        StripeModule,
+        NotificationModule,
+        ConfigModule,
+        forwardRef(() => PrivateMessageModule),
+    ],
     controllers: [OrdersController],
     providers: [OrdersService, OrderGateway, AwsService],
     exports: [OrdersService, OrderGateway],

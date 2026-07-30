@@ -1,6 +1,6 @@
 import { FirebaseNotificationService } from "@main/shared/notification/firebase-notification.service";
 import { EVENT_TYPES } from "@main/shared/notification/interface/events.name";
-import { HttpException, Injectable, NotFoundException } from "@nestjs/common";
+import { HttpException, Injectable, NotFoundException, Inject, forwardRef } from "@nestjs/common";
 import { EventEmitter2 } from "@nestjs/event-emitter";
 import { AppError } from "src/common/error/handle-error.app";
 import { HandleError } from "src/common/error/handle-error.decorator";
@@ -16,6 +16,7 @@ export class PrivateChatService {
         private readonly prisma: PrismaService,
         private readonly firebaseNotificationService: FirebaseNotificationService,
         private readonly eventEmitter: EventEmitter2,
+        @Inject(forwardRef(() => OrderGateway))
         private readonly orderGateway: OrderGateway,
     ) {}
 

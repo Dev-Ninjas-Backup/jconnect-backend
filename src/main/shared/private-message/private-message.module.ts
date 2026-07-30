@@ -1,4 +1,4 @@
-import { Module } from "@nestjs/common";
+import { Module, forwardRef } from "@nestjs/common";
 
 import { OrdersModule } from "@main/order/order.module";
 import { NotificationModule } from "../notification/notification.module";
@@ -8,7 +8,7 @@ import { PrivateChatService } from "./service/private-message.service";
 import { FirebaseNotificationService } from "../notification/firebase-notification.service";
 
 @Module({
-    imports: [NotificationModule, OrdersModule],
+    imports: [NotificationModule, forwardRef(() => OrdersModule)],
     controllers: [PrivateChatController],
     providers: [PrivateChatService, PrivateChatGateway, FirebaseNotificationService],
     exports: [PrivateChatGateway],

@@ -4,6 +4,7 @@ import {
     Inject,
     Injectable,
     NotFoundException,
+    forwardRef,
 } from "@nestjs/common";
 
 import { HandleError } from "@common/error/handle-error.decorator";
@@ -46,6 +47,7 @@ export class OrdersService {
         private mail: MailService,
         private readonly firebaseNotificationService: FirebaseNotificationService,
         private readonly orderGateway: OrderGateway,
+        @Inject(forwardRef(() => PrivateChatGateway))
         private readonly privateChatGateway: PrivateChatGateway,
         @Inject("STRIPE_CLIENT")
         private readonly stripe: Stripe,
