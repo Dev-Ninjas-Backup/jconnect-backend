@@ -1,7 +1,15 @@
 import { FirebaseNotificationService } from "@main/shared/notification/firebase-notification.service";
 import { EVENT_TYPES } from "@main/shared/notification/interface/events.name";
-import { HttpException, Injectable, NotFoundException, Inject, forwardRef } from "@nestjs/common";
+import {
+    BadRequestException,
+    HttpException,
+    Injectable,
+    NotFoundException,
+    Inject,
+    forwardRef,
+} from "@nestjs/common";
 import { EventEmitter2 } from "@nestjs/event-emitter";
+import { OrderStatus } from "@prisma/client";
 import { AppError } from "src/common/error/handle-error.app";
 import { HandleError } from "src/common/error/handle-error.decorator";
 import { successResponse } from "src/common/utilsResponse/response.util";
@@ -530,9 +538,20 @@ export class PrivateChatService {
 
     /**
      * ---  Update service request isDeclined and isAccepted status----
+     *
+     * Guards:
+     *  - When the caller is the seller (service creator) and is trying to
+     *    decline a promotional attachment whose linked order has already been
+     *    received (status >= IN_PROGRESS), reject the request. Once work has
+     *    started, the seller must complete the order rather than decline the
+     *    attachment.
      */
     @HandleError("Failed to update service request", "PRIVATE_CHAT")
-    async updateIsDeclined(id: string, updateData: { isDeclined?: boolean; isAccepted?: boolean }) {
+    async updateIsDeclined(
+        id: string,
+        updateData: { isDeclined?: boolean; isAccepted?: boolean },
+        actingUserId?: string,
+    ) {
         const serviceRequest = await this.prisma.serviceRequest.findUnique({
             where: { id },
             include: {
@@ -561,6 +580,40 @@ export class PrivateChatService {
 
         if (!serviceRequest) {
             throw new NotFoundException(`Service request with ID ${id} not found`);
+        }
+
+        // ---- Block the seller from declining the promotional attachment once
+        // the linked order has been received. Only block when the decline is
+        // coming from the seller (the service creator); other callers
+        // (buyer/admin) can still update the request as needed. ----
+        if (
+            updateData.isDeclined === true &&
+            actingUserId &&
+            serviceRequest.service?.creator?.id === actingUserId
+        ) {
+            const linkedOrder = await this.prisma.order.findFirst({
+                where: {
+                    OR: [
+                        { serviceRequestId: id },
+                        {
+                            buyerId: serviceRequest.buyerId,
+                            serviceId: serviceRequest.serviceId ?? undefined,
+                        },
+                    ],
+                },
+                orderBy: { createdAt: "desc" },
+                select: { id: true, status: true },
+            });
+
+            if (
+                linkedOrder &&
+                linkedOrder.status !== OrderStatus.PENDING &&
+                linkedOrder.status !== OrderStatus.CANCELLED
+            ) {
+                throw new BadRequestException(
+                    "You have already received this order, so you can no longer decline the promotional attachment. Please complete the work and let the buyer confirm delivery.",
+                );
+            }
         }
 
         const updated = await this.prisma.serviceRequest.update({

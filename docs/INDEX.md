@@ -11,6 +11,7 @@
 ### 🔔 Notification System (FCM + Socket.IO)
 
 - **[Notification System](./NOTIFICATION_SYSTEM.md)** - Full reference of the FCM push + Socket.IO notification stack (namespaces, events, payloads, REST endpoints, toggles, persistence).
+- **[Order Info Live Update](./ORDER_INFO_LIVE_UPDATE.md)** - How the Order Info page receives real-time updates (status timeline, proof, delivery date, promotion-info visibility, seller-decline guards).
 
 ### 📖 Detailed Documentation
 

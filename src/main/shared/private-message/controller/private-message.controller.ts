@@ -127,7 +127,11 @@ export class PrivateChatController implements OnModuleInit {
             updateData.isAccepted = isAccepted;
         }
 
-        const updatedServiceRequest = await this.privateService.updateIsDeclined(id, updateData);
+        const updatedServiceRequest = await this.privateService.updateIsDeclined(
+            id,
+            updateData,
+            userId,
+        );
 
         this.gateway.emitServiceRequestUpdate(updatedServiceRequest);
 
