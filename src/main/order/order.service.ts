@@ -136,6 +136,8 @@ export class OrdersService {
                         specialNotes: true,
                         promotionDate: true,
                         uploadedFileUrl: true,
+                        isDeclined: true,
+                        isAccepted: true,
                     },
                 },
                 buyer: {
@@ -161,7 +163,7 @@ export class OrdersService {
 
         if (!order) throw new NotFoundException("Order not found");
 
-        let serviceRequest = order.serviceRequest;
+        let serviceRequest: any = order.serviceRequest;
 
         if (!serviceRequest) {
             serviceRequest = await this.prisma.serviceRequest.findFirst({
@@ -176,18 +178,29 @@ export class OrdersService {
                     specialNotes: true,
                     promotionDate: true,
                     uploadedFileUrl: true,
+                    isDeclined: true,
+                    isAccepted: true,
                 },
             });
         }
 
         const { serviceRequest: _serviceRequest, ...orderData } = order;
 
+        // Hide promotion info from buyer when seller has declined the service request.
+        // When the buyer re-submits documents, isDeclined is reset to false and the
+        // promotion info becomes visible again automatically.
+        const showPromotionInfo = !serviceRequest?.isDeclined;
+
         return {
             ...orderData,
-            captionOrInstructions: serviceRequest?.captionOrInstructions ?? null,
-            specialNotes: serviceRequest?.specialNotes ?? null,
-            promotionDate: serviceRequest?.promotionDate ?? null,
-            files: serviceRequest?.uploadedFileUrl ?? [],
+            captionOrInstructions: showPromotionInfo
+                ? (serviceRequest?.captionOrInstructions ?? null)
+                : null,
+            specialNotes: showPromotionInfo ? (serviceRequest?.specialNotes ?? null) : null,
+            promotionDate: showPromotionInfo ? (serviceRequest?.promotionDate ?? null) : null,
+            files: showPromotionInfo ? (serviceRequest?.uploadedFileUrl ?? []) : [],
+            isServiceRequestDeclined: serviceRequest?.isDeclined ?? false,
+            isServiceRequestAccepted: serviceRequest?.isAccepted ?? false,
         };
     }
 
@@ -1246,7 +1259,7 @@ export class OrdersService {
         }
 
         // যদি false হয় তাহলে শুধু isCancalProofSubmitted আপডেট হবে, proofUrl unchanged
-        return await this.prisma.order.update({
+        const restoredOrder = await this.prisma.order.update({
             where: { id: orderId },
             data: {
                 isCancalProofSubmitted: false,
@@ -1273,5 +1286,11 @@ export class OrdersService {
                 },
             },
         });
+
+        // Notify connected clients so the timeline updates in real-time when the
+        // proof is restored.
+        this.orderGateway.emitStatusChange(restoredOrder);
+
+        return restoredOrder;
     }
 }

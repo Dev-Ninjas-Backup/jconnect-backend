@@ -27,6 +27,7 @@ export enum OrderEvents {
     DELIVERY_DATE_UPDATED = "order:delivery_date_updated",
     PROOF_CANCELLED = "order:proof_cancelled",
     ORDER_DELETED = "order:deleted",
+    SERVICE_REQUEST_UPDATED = "order:service_request_updated",
 
     JOIN_ORDER = "order:join_order",
     LEAVE_ORDER = "order:leave_order",
@@ -187,6 +188,22 @@ export class OrderGateway implements OnGatewayInit, OnGatewayConnection, OnGatew
 
     emitOrderDeleted(order: any) {
         this.push([order.buyerId, order.sellerId], OrderEvents.ORDER_DELETED, order);
+    }
+
+    /**
+     * Notify connected clients that a service request attached to an order has
+     * changed (e.g. seller accepted/declined, buyer resubmitted files). The
+     * order info page listens for this so it can refresh the promotion info /
+     * timeline in real-time.
+     */
+    emitServiceRequestUpdated(orderId: string, userIds: string[], serviceRequest: any) {
+        const payload = { ...serviceRequest, orderId, timestamp: new Date().toISOString() };
+        for (const uid of userIds) {
+            if (uid) this.server.to(uid).emit(OrderEvents.SERVICE_REQUEST_UPDATED, payload);
+        }
+        if (orderId) {
+            this.server.to(`order:${orderId}`).emit(OrderEvents.SERVICE_REQUEST_UPDATED, payload);
+        }
     }
 
     /** Map OrderStatus → event after a successful status mutation */

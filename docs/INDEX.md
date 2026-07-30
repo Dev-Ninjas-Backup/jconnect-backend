@@ -8,6 +8,10 @@
 - **[Quick Reference Card](./SOCKET_REST_QUICK_REFERENCE.md)** - Fast lookup for developers
 - **[Testing Guide](./TESTING_GUIDE.md)** - How to test the implementation
 
+### 🔔 Notification System (FCM + Socket.IO)
+
+- **[Notification System](./NOTIFICATION_SYSTEM.md)** - Full reference of the FCM push + Socket.IO notification stack (namespaces, events, payloads, REST endpoints, toggles, persistence).
+
 ### 📖 Detailed Documentation
 
 - **[Complete Integration Guide](./CUSTOM_SERVICE_REQUEST_SOCKET_INTEGRATION.md)** - Comprehensive documentation

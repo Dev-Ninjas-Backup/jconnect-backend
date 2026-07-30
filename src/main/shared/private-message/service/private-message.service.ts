@@ -8,6 +8,7 @@ import { successResponse } from "src/common/utilsResponse/response.util";
 import { NotificationType } from "src/lib/firebase/dto/notification.dto";
 import { PrismaService } from "src/lib/prisma/prisma.service";
 import { SendPrivateMessageDto } from "../dto/privateChatGateway.dto";
+import { OrderGateway } from "@main/order/order.gateway";
 
 @Injectable()
 export class PrivateChatService {
@@ -15,6 +16,7 @@ export class PrivateChatService {
         private readonly prisma: PrismaService,
         private readonly firebaseNotificationService: FirebaseNotificationService,
         private readonly eventEmitter: EventEmitter2,
+        private readonly orderGateway: OrderGateway,
     ) {}
 
     /**
@@ -672,6 +674,33 @@ export class PrivateChatService {
             console.error(`Failed to send notification: ${error.message}`);
         }
 
+        // -------------Notify order info page listeners in real-time----------------
+        try {
+            const linkedOrder = await this.prisma.order.findFirst({
+                where: {
+                    OR: [
+                        { serviceRequestId: id },
+                        {
+                            buyerId: updated.buyerId,
+                            serviceId: updated.serviceId ?? undefined,
+                        },
+                    ],
+                },
+                orderBy: { createdAt: "desc" },
+                select: { id: true },
+            });
+
+            if (linkedOrder?.id) {
+                this.orderGateway.emitServiceRequestUpdated(
+                    linkedOrder.id,
+                    [updated.buyerId, updated.service?.creator?.id].filter(Boolean) as string[],
+                    updated,
+                );
+            }
+        } catch (error) {
+            console.error("Failed to emit service request update to order gateway:", error);
+        }
+
         return updated;
     }
 
@@ -763,6 +792,33 @@ export class PrivateChatService {
             }
         } catch (error) {
             console.error(`Failed to send notification: ${error.message}`);
+        }
+
+        // -------------Notify order info page listeners in real-time----------------
+        try {
+            const linkedOrder = await this.prisma.order.findFirst({
+                where: {
+                    OR: [
+                        { serviceRequestId: id },
+                        {
+                            buyerId: updated.buyerId,
+                            serviceId: updated.serviceId ?? undefined,
+                        },
+                    ],
+                },
+                orderBy: { createdAt: "desc" },
+                select: { id: true },
+            });
+
+            if (linkedOrder?.id) {
+                this.orderGateway.emitServiceRequestUpdated(
+                    linkedOrder.id,
+                    [updated.buyerId, updated.service?.creator?.id].filter(Boolean) as string[],
+                    updated,
+                );
+            }
+        } catch (error) {
+            console.error("Failed to emit service request update to order gateway:", error);
         }
 
         return updated;
