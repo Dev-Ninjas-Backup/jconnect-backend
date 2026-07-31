@@ -1,5 +1,4 @@
 import { JWTPayload } from "@common/jwt/jwt.interface";
-import { FirebaseNotificationService } from "@main/shared/notification/firebase-notification.service";
 import type {
     ServiceEvent,
     UserRegistration,
@@ -20,8 +19,6 @@ import {
     WebSocketServer,
 } from "@nestjs/websockets";
 import { Server, Socket } from "socket.io";
-import { NotificationType } from "src/lib/firebase/dto/notification.dto";
-import { MailService } from "src/lib/mail/mail.service";
 import { PrismaService } from "src/lib/prisma/prisma.service";
 
 @WebSocketGateway({
@@ -39,8 +36,6 @@ export class NotificationGateway
         private readonly jwtService: JwtService,
         private readonly configService: ConfigService,
         private readonly prisma: PrismaService,
-        private readonly firebaseNotificationService: FirebaseNotificationService,
-        private readonly mailService: MailService,
     ) {}
 
     @WebSocketServer()
@@ -203,13 +198,10 @@ export class NotificationGateway
 
             this.logger.log(`--- Processing recipient: ${recipient.id} (${recipient.email}) ---`);
 
-            // title === message, same shape as FCM (where title === body)
-            const title = `New User Registered: ${payload.info.name} has registered as ${payload.info.role}`;
-
             const notificationData: Notification = {
                 type: EVENT_TYPES.USERREGISTRATION_CREATE,
-                title,
-                message: title,
+                title: "New User Registered",
+                message: `${payload.info.name} has registered as ${payload.info.role}`,
                 createdAt: new Date(),
                 meta: {
                     id: payload.info.id,
@@ -293,13 +285,10 @@ export class NotificationGateway
                 this.logger.warn(`No active socket for user ${recipient.id}`);
             }
 
-            // title === message, same shape as FCM (where title === body)
-            const title = `New Service Created: ${payload.info.serviceName} has been created.`;
-
             const socketPayload: Notification = {
                 type: EVENT_TYPES.SERVICE_CREATE,
-                title,
-                message: title,
+                title: "New Service Created",
+                message: `${payload.info.serviceName} has been created.`,
                 createdAt: new Date(),
                 meta: {
                     ...payload.meta,
@@ -345,16 +334,12 @@ export class NotificationGateway
                     continue;
                 }
 
-                // title === message, same shape as FCM (where title === body)
-                const inquiryBody =
-                    payload.info.message ||
-                    ` like your profile and I wanna buy your service created by ${payload.info.username}`;
-                const title = `New Inquiry Received: ${inquiryBody}`;
-
                 const notificationData = {
                     type: EVENT_TYPES.INQUIRY_CREATE,
-                    title,
-                    message: title,
+                    title: "New Inquiry Received",
+                    message:
+                        payload.info.message ||
+                        ` like your profile and I wanna buy your service created by ${payload.info.username}`,
                     createdAt: new Date(),
                     meta: {
                         inquirerId: payload.info.id,
@@ -366,34 +351,7 @@ export class NotificationGateway
                     },
                 };
 
-                // ------------- SAVE TO DATABASE ----------------
-                const notification = await this.prisma.notification.create({
-                    data: {
-                        userId: recipient.id,
-                        title: notificationData.title,
-                        message: notificationData.message,
-                        metadata: {
-                            type: notificationData.type,
-                            ...notificationData.meta,
-                        },
-                        read: false,
-                        createdAt: new Date(),
-                    },
-                });
-
-                // ------------ SAVE TO USER NOTIFICATION (Mapping) ------------
-                await this.prisma.userNotification.create({
-                    data: {
-                        userId: recipient.id,
-                        notificationId: notification.id,
-                        type: "Inquiry",
-                        read: false,
-                    },
-                });
-
-                this.logger.log(`Notification saved for user ${recipient.id}`);
-
-                // ------------- SEND REALTIME VIA SOCKET -------------
+                // Socket only — FCM + DB are already handled by sendToUser in users.service
                 const clients = this.getClientsForUser(recipient.id);
 
                 if (!clients.size) {
@@ -427,13 +385,10 @@ export class NotificationGateway
 
         try {
             const buyerId = payload.info.buyerId;
-            // title === message, same shape as FCM (where title === body)
-            const title = `Service Request Accepted: ${payload.info.sellerName} has accepted your service request for "${payload.info.serviceName}"`;
-
             const notificationData = {
                 type: EVENT_TYPES.SERVICE_REQUEST_ACCEPTED,
-                title,
-                message: title,
+                title: "Service Request Accepted",
+                message: `${payload.info.sellerName} has accepted your service request for "${payload.info.serviceName}"`,
                 createdAt: new Date(),
                 meta: {
                     serviceRequestId: payload.info.serviceRequestId,
@@ -446,82 +401,7 @@ export class NotificationGateway
                 },
             };
 
-            // ------------- SAVE TO DATABASE ----------------
-            const notification = await this.prisma.notification.create({
-                data: {
-                    userId: buyerId,
-                    title: notificationData.title,
-                    message: notificationData.message,
-                    metadata: {
-                        type: notificationData.type,
-                        ...notificationData.meta,
-                    },
-                    read: false,
-                    createdAt: new Date(),
-                },
-            });
-
-            // ------------ SAVE TO USER NOTIFICATION (Mapping) ------------
-            await this.prisma.userNotification.create({
-                data: {
-                    userId: buyerId,
-                    notificationId: notification.id,
-                    type: "Service",
-                    read: false,
-                },
-            });
-
-            this.logger.log(`Notification saved for buyer ${buyerId}`);
-
-            // ------------- SEND EMAIL NOTIFICATION ----------------
-            // try {
-            //     const buyer = await this.prisma.user.findUnique({
-            //         where: { id: buyerId },
-            //         select: { email: true, full_name: true },
-            //     });
-
-            //     if (buyer?.email) {
-            //         await this.mailService.sendEmail(
-            //             buyer.email,
-            //             "Service Request Accepted",
-            //             `
-            //             <p>Hello ${buyer.full_name || "Buyer"},</p>
-            //             <p><strong>${payload.info.sellerName}</strong> has accepted your service request for <strong>"${payload.info.serviceName}"</strong>.</p>
-            //             <p>You can now proceed with the next steps of your request.</p>
-            //             <p>Thank you,<br/>DaConnect Team</p>
-            //             `,
-            //         );
-            //         this.logger.log(` Email notification sent to buyer ${buyerId}`);
-            //     }
-            // } catch (emailError: any) {
-            //     this.logger.error(`Failed to send email notification: ${emailError.message}`);
-            // }
-
-            // ------------- SEND FIREBASE NOTIFICATION ----------------
-            // try {
-            //     await this.firebaseNotificationService.sendToUser(
-            //         buyerId,
-            //         {
-            //             title: " Service Request Accepted",
-            //             body: `${payload.info.sellerName} has accepted your service request for "${payload.info.serviceName}"`,
-            //             type: NotificationType.SERVICE_REQUEST,
-            //             data: {
-            //                 serviceRequestId: payload.info.serviceRequestId,
-            //                 sellerId: payload.info.sellerId,
-            //                 sellerName: payload.info.sellerName,
-            //                 serviceName: payload.info.serviceName,
-            //                 status: "ACCEPTED",
-            //                 timestamp: new Date().toISOString(),
-            //             },
-            //         },
-            //         false,
-            //     );
-            //     this.logger.log(` Firebase notification sent to buyer ${buyerId}`);
-            // } catch (fbError: any) {
-            //     this.logger.error(`Failed to send Firebase notification: ${fbError.message}`);
-            // }
-
-            // ------------- SEND REALTIME VIA SOCKET -------------
+            // Socket only — FCM + DB are already handled by sendToUser in the service layer
             const clients = this.getClientsForUser(buyerId);
 
             if (!clients.size) {
@@ -554,13 +434,10 @@ export class NotificationGateway
 
         try {
             const buyerId = payload.info.buyerId;
-            // title === message, same shape as FCM (where title === body)
-            const title = `Service Request Declined: ${payload.info.sellerName} has declined your service request for "${payload.info.serviceName}"`;
-
             const notificationData = {
                 type: EVENT_TYPES.SERVICE_REQUEST_DECLINED,
-                title,
-                message: title,
+                title: "Service Request Declined",
+                message: `${payload.info.sellerName} has declined your service request for "${payload.info.serviceName}"`,
                 createdAt: new Date(),
                 meta: {
                     serviceRequestId: payload.info.serviceRequestId,
@@ -574,87 +451,7 @@ export class NotificationGateway
                 },
             };
 
-            // ------------- SAVE TO DATABASE ----------------
-            const notification = await this.prisma.notification.create({
-                data: {
-                    userId: buyerId,
-                    title: notificationData.title,
-                    message: notificationData.message,
-                    metadata: {
-                        type: notificationData.type,
-                        ...notificationData.meta,
-                    },
-                    read: false,
-                    createdAt: new Date(),
-                },
-            });
-
-            // ------------ SAVE TO USER NOTIFICATION (Mapping) ------------
-            await this.prisma.userNotification.create({
-                data: {
-                    userId: buyerId,
-                    notificationId: notification.id,
-                    type: "Service",
-                    read: false,
-                },
-            });
-
-            this.logger.log(`Notification saved for buyer ${buyerId}`);
-
-            // ------------- SEND EMAIL NOTIFICATION ----------------
-            // try {
-            //     const buyer = await this.prisma.user.findUnique({
-            //         where: { id: buyerId },
-            //         select: { email: true, full_name: true },
-            //     });
-
-            //     if (buyer?.email) {
-            //         const reasonText = payload.info.reason
-            //             ? `<p><strong>Reason:</strong> ${payload.info.reason}</p>`
-            //             : "";
-            //         await this.mailService.sendEmail(
-            //             buyer.email,
-            //             " Service Request Declined",
-            //             `
-            //             <p>Hello ${buyer.full_name || "Buyer"},</p>
-            //             <p><strong>${payload.info.sellerName}</strong> has declined your service request for <strong>"${payload.info.serviceName}"</strong>.</p>
-            //             ${reasonText}
-            //             <p>You can create a new request or contact the seller for more details.</p>
-            //             <p>Thank you,<br/>DaConnect Team</p>
-            //             `,
-            //         );
-            //         this.logger.log(` Email notification sent to buyer ${buyerId}`);
-            //     }
-            // } catch (emailError: any) {
-            //     this.logger.error(`Failed to send email notification: ${emailError.message}`);
-            // }
-
-            // ------------- SEND FIREBASE NOTIFICATION  ----------------
-            // try {
-            //     await this.firebaseNotificationService.sendToUser(
-            //         buyerId,
-            //         {
-            //             title: " Service Request Declined",
-            //             body: `${payload.info.sellerName} has declined your service request for "${payload.info.serviceName}"`,
-            //             type: NotificationType.SERVICE_REQUEST,
-            //             data: {
-            //                 serviceRequestId: payload.info.serviceRequestId,
-            //                 sellerId: payload.info.sellerId,
-            //                 sellerName: payload.info.sellerName,
-            //                 serviceName: payload.info.serviceName,
-            //                 status: "DECLINED",
-            //                 reason: payload.info.reason || undefined,
-            //                 timestamp: new Date().toISOString(),
-            //             },
-            //         },
-            //         false,
-            //     );
-            //     this.logger.log(` Firebase notification sent to buyer ${buyerId}`);
-            // } catch (fbError: any) {
-            //     this.logger.error(`Failed to send Firebase notification: ${fbError.message}`);
-            // }
-
-            // ------------- SEND REALTIME VIA SOCKET -------------
+            // Socket only — FCM + DB are already handled by sendToUser in the service layer
             const clients = this.getClientsForUser(buyerId);
 
             if (!clients.size) {
