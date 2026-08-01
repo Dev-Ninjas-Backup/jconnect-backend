@@ -854,9 +854,10 @@ export class PrivateChatService {
                         body: `${updated.buyer.username} has updated the files for "${serviceName}"`,
                         type: NotificationType.UPLOAD_PROOF,
                         data: {
+                            // Order ID for deep-link; serviceRequestId is the real SR id (never buyerId)
+                            ...(linkedOrder?.id ? { orderId: linkedOrder.id } : {}),
+                            ...(linkedOrder?.orderCode ? { orderCode: linkedOrder.orderCode } : {}),
                             serviceRequestId: id,
-                            orderId: linkedOrder?.id ?? "",
-                            orderCode: linkedOrder?.orderCode ?? "",
                             buyerId: updated.buyerId,
                             serviceName,
                             timestamp: new Date().toISOString(),

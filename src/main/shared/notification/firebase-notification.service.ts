@@ -358,14 +358,18 @@ export class FirebaseNotificationService {
     ): Promise<void> {
         try {
             const data = notification.data || {};
-            // Prefer order/listing/request ids so clients can deep-link via entityId
-            const entityId =
-                data.orderId ||
-                data.listingId ||
-                data.serviceRequestId ||
-                data.conversationId ||
-                data.entityId ||
-                null;
+            // Prefer order/listing/request ids so clients can deep-link via entityId.
+            // Treat empty strings as missing (avoids falling through to the wrong field).
+            const pickId = (...candidates: Array<string | undefined | null>) =>
+                candidates.find((v) => typeof v === "string" && v.trim() !== "") ?? null;
+
+            const entityId = pickId(
+                data.orderId,
+                data.listingId,
+                data.serviceRequestId,
+                data.conversationId,
+                data.entityId,
+            );
 
             // -------------- Create notification record with userId ----------------
             const notificationRecord = await this.prisma.notification.create({
@@ -536,6 +540,8 @@ export class FirebaseNotificationService {
                 body: `${d.uploadedByName} has uploaded proof of work for "${d.serviceName}"`,
                 type: NotificationType.UPLOAD_PROOF,
                 data: {
+                    orderId: d.orderId,
+                    orderCode: d.orderCode,
                     serviceRequestId: d.serviceRequestId,
                     serviceId: d.serviceId,
                     serviceName: d.serviceName,

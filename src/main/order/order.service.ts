@@ -1012,22 +1012,23 @@ export class OrdersService {
         await this.firebaseNotificationService.sendToUser(
             order.buyerId,
             {
-                title: " upload proof file ",
+                title: "Proof uploaded",
                 body: `${updated.seller?.username ?? "Seller"} has submitted proof for order ${order.orderCode}`,
                 type: NotificationType.UPLOAD_PROOF,
                 data: {
+                    // App uses orderId to fetch order details — never put buyerId here
                     orderId: order.id,
                     orderCode: order.orderCode,
-                    buyerId: updated.buyerId,
-                    sellerId: updated.sellerId,
+                    serviceRequestId: order.serviceRequestId ?? "",
+                    buyerId: order.buyerId,
+                    sellerId: order.sellerId,
+                    status: updated.status,
                     timestamp: new Date().toISOString(),
                 },
             },
             true,
         );
-        console.log(
-            `📁 Update notification sent to seller ${updated.sellerId} about updated files`,
-        );
+        console.log(`📁 UPLOAD_PROOF notification sent to buyer ${order.buyerId} for order ${order.id}`);
 
         this.orderGateway.emitProofSubmitted(updated);
         return updated;
