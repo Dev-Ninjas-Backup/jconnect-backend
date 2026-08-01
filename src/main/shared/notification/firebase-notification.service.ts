@@ -40,17 +40,6 @@ export class FirebaseNotificationService {
                 return { success: false, error: "User not found" };
             }
 
-            if (!user.fcmToken) {
-                this.logger.warn(
-                    `User ${userId} has no FCM token - skipping push notification but saving to DB`,
-                );
-                // Save to DB even if FCM token is missing
-                if (saveToDb) {
-                    await this.saveNotificationToDb(userId, notification);
-                }
-                return { success: false, error: "User has no FCM token" };
-            }
-
             // ------------------Check notification settings ----------------
             const canSend = await this.checkNotificationSettings(userId, notification.type);
             if (!canSend) {
@@ -58,33 +47,47 @@ export class FirebaseNotificationService {
                 return { success: false, error: "User has disabled this notification type" };
             }
 
-            // ------------------Send FCM notification ----------------
-            this.logger.log(
-                `Sending ${notification.type} notification to user ${userId} with FCM token`,
-            );
-            const result = await this.fcmService.sendToDevice({
-                fcmToken: user.fcmToken,
-                notification: {
-                    title: notification.title,
-                    body: notification.body,
-                },
-                data: {
-                    type: notification.type,
-                    ...notification.data,
-                },
-                android: {
-                    priority: "high",
-                    sound: "default",
-                    channelId: "default_channel",
-                },
-                apns: {
-                    sound: "default",
-                    badge: 1,
-                },
-            });
+            const hasValidToken =
+                !!user.fcmToken && user.fcmToken.trim() !== "" && user.fcmToken !== "null";
 
-            // ---------- Save notification to database ----------
-            if (saveToDb && result.success) {
+            let result: { success: boolean; error?: string } = {
+                success: false,
+                error: "User has no FCM token",
+            };
+
+            if (!hasValidToken) {
+                this.logger.warn(
+                    `User ${userId} has no FCM token - skipping push notification but saving to DB`,
+                );
+            } else {
+                // ------------------Send FCM notification ----------------
+                this.logger.log(
+                    `Sending ${notification.type} notification to user ${userId} with FCM token`,
+                );
+                result = await this.fcmService.sendToDevice({
+                    fcmToken: user.fcmToken as string,
+                    notification: {
+                        title: notification.title,
+                        body: notification.body,
+                    },
+                    data: {
+                        type: notification.type,
+                        ...notification.data,
+                    },
+                    android: {
+                        priority: "high",
+                        sound: "default",
+                        channelId: "default_channel",
+                    },
+                    apns: {
+                        sound: "default",
+                        badge: 1,
+                    },
+                });
+            }
+
+            // Always persist in-app notification when requested, even if FCM fails
+            if (saveToDb) {
                 await this.saveNotificationToDb(userId, notification);
             }
 
@@ -116,61 +119,63 @@ export class FirebaseNotificationService {
                 select: { id: true, fcmToken: true } as any,
             })) as unknown as Array<{ id: string; fcmToken: string | null }>;
 
-            // Filter out users without valid FCM tokens
-            const validUsers = users.filter(
-                (u) => u.fcmToken && u.fcmToken.trim() !== "" && u.fcmToken !== "null",
-            );
-
-            if (validUsers.length === 0) {
-                this.logger.warn("No users with FCM tokens found");
-                return { successCount: 0, failureCount: userIds.length };
-            }
-
-            // Filter users based on notification settings
+            // Filter users based on notification settings (including those without FCM tokens)
             const eligibleUsers = await this.filterUsersByNotificationSettings(
-                validUsers.map((u) => u.id),
+                userIds,
                 notification.type,
             );
 
-            const eligibleTokens = validUsers
-                .filter((u) => eligibleUsers.includes(u.id))
-                .map((u) => u.fcmToken as string)
-                .filter((token) => token && token.trim() !== "");
+            const validUsers = users.filter(
+                (u) =>
+                    eligibleUsers.includes(u.id) &&
+                    u.fcmToken &&
+                    u.fcmToken.trim() !== "" &&
+                    u.fcmToken !== "null",
+            );
 
-            if (eligibleTokens.length === 0) {
-                return { successCount: 0, failureCount: userIds.length };
+            let successCount = 0;
+            let failureCount = userIds.length;
+
+            if (validUsers.length > 0) {
+                const eligibleTokens = validUsers
+                    .map((u) => u.fcmToken as string)
+                    .filter((token) => token && token.trim() !== "");
+
+                const result = await this.fcmService.sendToMultipleDevices({
+                    fcmTokens: eligibleTokens,
+                    notification: {
+                        title: notification.title,
+                        body: notification.body,
+                    },
+                    data: {
+                        type: notification.type,
+                        ...notification.data,
+                    },
+                    android: {
+                        priority: "high",
+                        sound: "default",
+                    },
+                    apns: {
+                        sound: "default",
+                    },
+                });
+
+                successCount = result.successCount;
+                failureCount = result.failureCount + (userIds.length - eligibleTokens.length);
+            } else {
+                this.logger.warn("No users with FCM tokens found among eligible recipients");
             }
 
-            // --------------Send FCM notification to eligible users----------------
-            const result = await this.fcmService.sendToMultipleDevices({
-                fcmTokens: eligibleTokens,
-                notification: {
-                    title: notification.title,
-                    body: notification.body,
-                },
-                data: {
-                    type: notification.type,
-                    ...notification.data,
-                },
-                android: {
-                    priority: "high",
-                    sound: "default",
-                },
-                apns: {
-                    sound: "default",
-                },
-            });
-
-            // ------------ Save notifications to database -----------------------
-            if (saveToDb && result.successCount > 0) {
+            // Persist in-app notifications for all eligible users, even without FCM
+            if (saveToDb && eligibleUsers.length > 0) {
                 await Promise.all(
                     eligibleUsers.map((userId) => this.saveNotificationToDb(userId, notification)),
                 );
             }
 
             return {
-                successCount: result.successCount,
-                failureCount: result.failureCount,
+                successCount,
+                failureCount,
             };
         } catch (error) {
             this.logger.error(`Error sending notifications to multiple users: ${error.message}`);
@@ -298,6 +303,7 @@ export class FirebaseNotificationService {
 
             const typeMapping: Partial<Record<NotificationType, string>> = {
                 [NotificationType.NEW_MESSAGE]: "message",
+                [NotificationType.INQUIRY]: "Inquiry",
                 [NotificationType.SERVICE_REQUEST]: "Service",
                 [NotificationType.REVIEW_RECEIVED]: "review",
                 [NotificationType.ANNOUNCEMENT]: "post",
@@ -379,6 +385,7 @@ export class FirebaseNotificationService {
             [NotificationType.PAYMENT_RECEIVED]: "Payment",
             [NotificationType.ORDER_UPDATE]: "Service",
             [NotificationType.NEW_MESSAGE]: "Inquiry",
+            [NotificationType.INQUIRY]: "Inquiry",
             [NotificationType.NEW_FOLLOWER]: "UserRegistration",
             [NotificationType.NEW_LIKE]: "UserRegistration",
             [NotificationType.NEW_COMMENT]: "UserRegistration",
@@ -406,6 +413,18 @@ export class FirebaseNotificationService {
                 body: `${d.senderName} sent you a message: ${d.messagePreview}`,
                 type: NotificationType.NEW_MESSAGE,
                 data: { senderId: d.senderId, conversationId: d.conversationId },
+            }),
+            [NotificationType.INQUIRY]: (d) => ({
+                title: "New Inquiry Received",
+                body:
+                    d.messagePreview ||
+                    `${d.senderName} likes your profile and wants to buy your service`,
+                type: NotificationType.INQUIRY,
+                data: {
+                    senderId: d.senderId,
+                    conversationId: d.conversationId,
+                    inquirerName: d.senderName,
+                },
             }),
             [NotificationType.NEW_FOLLOWER]: (d) => ({
                 title: "New Follower",

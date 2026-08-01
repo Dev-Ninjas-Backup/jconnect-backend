@@ -141,12 +141,12 @@ export class PrivateChatService {
                         timestamp: message.createdAt.toISOString(),
                     },
                 },
-                false,
+                true,
             );
             console.log(` Firebase notification sent to user ${recipientId}`);
         } catch (error) {
+            // Don't fail message delivery if notification fails
             console.error(` Failed to send Firebase notification: ${error.message}`);
-            throw error;
         }
 
         return message;

@@ -4,65 +4,64 @@ import { IsBoolean, IsOptional } from "class-validator";
 export class NotificationToggleDto {
     @ApiPropertyOptional({
         description: "Receive email notifications",
-        default: false,
     })
     @IsOptional()
     @IsBoolean()
-    email?: boolean = false;
+    email?: boolean;
 
     @ApiPropertyOptional({
         description: "Receive userUpdates notifications",
-        default: false,
     })
     @IsOptional()
     @IsBoolean()
-    userUpdates?: boolean = false;
+    userUpdates?: boolean;
 
     @ApiPropertyOptional({
         description: "Receive serviceCreate notifications",
-        default: false,
     })
     @IsOptional()
     @IsBoolean()
-    serviceCreate?: boolean = false;
+    serviceCreate?: boolean;
 
     @ApiPropertyOptional({
         description: "Receive review and projects notifications",
-        default: false,
     })
     @IsOptional()
     @IsBoolean()
-    review?: boolean = false;
+    review?: boolean;
 
     @ApiPropertyOptional({
         description: "Receive post notifications",
-        default: false,
     })
     @IsOptional()
     @IsBoolean()
-    post?: boolean = false;
+    post?: boolean;
 
     @ApiPropertyOptional({
-        description: "Receive   Service notifications",
-        default: false,
+        description: "Receive Service notifications",
     })
     @IsOptional()
     @IsBoolean()
-    Service?: boolean = false;
+    Service?: boolean;
 
     @ApiPropertyOptional({
         description: "Receive message notifications",
-        default: false,
     })
     @IsOptional()
     @IsBoolean()
-    message?: boolean = false;
+    message?: boolean;
+
+    @ApiPropertyOptional({
+        description: "Receive inquiry notifications",
+    })
+    @IsOptional()
+    @IsBoolean()
+    Inquiry?: boolean;
 
     @ApiPropertyOptional({
         description: "Receive user registration notifications",
-        default: false,
     })
     @IsOptional()
     @IsBoolean()
-    userRegistration?: boolean = false;
+    userRegistration?: boolean;
 }

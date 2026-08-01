@@ -333,6 +333,7 @@ export class NotificationPayload {
 // Notification template types
 export enum NotificationType {
     NEW_MESSAGE = "NEW_MESSAGE",
+    INQUIRY = "INQUIRY",
     NEW_FOLLOWER = "NEW_FOLLOWER",
     NEW_LIKE = "NEW_LIKE",
     NEW_COMMENT = "NEW_COMMENT",

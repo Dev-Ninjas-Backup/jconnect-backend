@@ -317,19 +317,18 @@ export class NotificationGateway
         }
 
         try {
-            // ------------- Find users who enabled Inquiry notifications -------------
-            const enabledRecipients = await this.prisma.notificationToggle.findMany({
-                where: {
-                    userId: { in: payload.info.recipients.map((r: any) => r.id) },
-                    Inquiry: true,
-                },
-                select: { userId: true },
-            });
+            const recipientIds = payload.info.recipients.map((r: any) => r.id);
 
-            const enabledUserIds = new Set(enabledRecipients.map((r) => r.userId));
+            // Missing toggle row = allow (same as FCM path). Only skip when Inquiry is explicitly false.
+            const toggles = await this.prisma.notificationToggle.findMany({
+                where: { userId: { in: recipientIds } },
+                select: { userId: true, Inquiry: true },
+            });
+            const toggleByUserId = new Map(toggles.map((t) => [t.userId, t.Inquiry]));
 
             for (const recipient of payload.info.recipients) {
-                if (!enabledUserIds.has(recipient.id)) {
+                const inquiryEnabled = toggleByUserId.get(recipient.id);
+                if (inquiryEnabled === false) {
                     this.logger.log(`User ${recipient.id} disabled Inquiry notifications`);
                     continue;
                 }

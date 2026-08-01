@@ -39,15 +39,20 @@ export class NotificationSettingService {
                 where: { userId },
             });
 
+            // Only apply fields explicitly provided so omitted toggles are not overwritten
+            const patchData = Object.fromEntries(
+                Object.entries(dto).filter(([, value]) => value !== undefined),
+            );
+
             const toggle = existing
                 ? await this.prisma.notificationToggle.update({
                       where: { id: existing.id },
-                      data: dto,
+                      data: patchData,
                   })
                 : await this.prisma.notificationToggle.create({
                       data: {
                           userId,
-                          ...dto,
+                          ...patchData,
                       },
                   });
 

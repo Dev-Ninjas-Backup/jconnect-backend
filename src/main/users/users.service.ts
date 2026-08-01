@@ -954,16 +954,13 @@ export class UsersService {
             try {
                 const inquiryMessage = `I like your profile and I wanna buy your service - ${currentUser.username}`;
                 console.log("the message is now", inquiryMessage);
-                //  ----------- Build notification using the NEW_MESSAGE template  ---------------
+                //  ----------- Build notification using the INQUIRY template  ---------------
                 const notification = this.firebaseNotificationService.buildNotificationTemplate(
-                    NotificationType.NEW_MESSAGE,
+                    NotificationType.INQUIRY,
                     {
                         senderName: currentUser.username,
                         senderId: currentUser.id,
-                        messagePreview:
-                            inquiryMessage ||
-                            "I like your profile and I wanna buy your service - " +
-                                currentUser.username,
+                        messagePreview: inquiryMessage,
                         conversationId: `inquiry_${currentUser.id}_${user.id}`,
                         recipients: [{ id: user.id, email: user.email }],
                     },
