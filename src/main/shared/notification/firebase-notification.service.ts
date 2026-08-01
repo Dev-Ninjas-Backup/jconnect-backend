@@ -305,17 +305,19 @@ export class FirebaseNotificationService {
                 return true;
             }
 
-            const typeMapping: Partial<Record<NotificationType, string>> = {
+            const typeMapping: Partial<Record<NotificationType | string, string>> = {
                 [NotificationType.NEW_MESSAGE]: "message",
                 [NotificationType.INQUIRY]: "Inquiry",
                 [NotificationType.SERVICE_REQUEST]: "Service",
-                [NotificationType.SERVICE_REQUEST_ACCEPTED]: "Service",
-                [NotificationType.SERVICE_REQUEST_DECLINED]: "Service",
-                [NotificationType.UPLOAD_PROOF]: "UploadProof",
-                [NotificationType.REVIEW_RECEIVED]: "review",
+                [NotificationType.SERVICE_REQUEST_ACCEPTED]: "SERVICE_REQUEST_ACCEPTED",
+                [NotificationType.SERVICE_REQUEST_DECLINED]: "SERVICE_REQUEST_REJECTED",
+                [NotificationType.UPLOAD_PROOF]: "UPLOAD_PROOF",
+                [NotificationType.REVIEW_RECEIVED]: "REVIEW_RECEIVED",
                 [NotificationType.ANNOUNCEMENT]: "post",
-                [NotificationType.ORDER_UPDATE]: "Service",
-                [NotificationType.PAYMENT_RECEIVED]: "payment",
+                [NotificationType.ORDER_UPDATE]: "ORDER_UPDATE",
+                [NotificationType.PAYMENT_RECEIVED]: "PAYMENT_SUCCESSFUL",
+                [NotificationType.NEW_ORDER]: "NEW_ORDER",
+                SERVICE_REQUEST_CANCELLED: "SERVICE_REQUEST_CANCELLED",
             };
 
             const settingKey = typeMapping[type];

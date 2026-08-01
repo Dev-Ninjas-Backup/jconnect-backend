@@ -1273,27 +1273,7 @@ export class PaymentService {
         `,
         );
 
-        //------------------ Send payment released notification to seller ------------------//
-        try {
-            await this.firebaseNotificationService.sendToUser(
-                order.sellerId,
-                {
-                    title: " Payment Released",
-                    body: `Your payment of $${(order.amount / 100).toFixed(2)} for "${order.service.serviceName}" has been released`,
-                    type: NotificationType.PAYMENT_RECEIVED,
-                    data: {
-                        orderId: order.id,
-                        orderCode: order.orderCode,
-                        amount: order.amount.toString(),
-                        timestamp: new Date().toISOString(),
-                    },
-                },
-                true,
-            );
-            console.log(` Payment released notification sent to seller ${order.sellerId}`);
-        } catch (error) {
-            console.error(` Failed to send payment released notification: ${error.message}`);
-        }
+        // Payment released FCM already sent above (before emails) — do not send again
 
         return {
             platformFee: setting?.platformFee_percents,
