@@ -1090,8 +1090,8 @@ export class UsersService {
         });
 
         const notifType = approve
-            ? "PROFILE_VERIFICATION_APPROVED"
-            : "PROFILE_VERIFICATION_REJECTED";
+            ? NotificationType.PROFILE_VERIFICATION_APPROVED
+            : NotificationType.PROFILE_VERIFICATION_REJECTED;
         const title = approve ? "Profile Verified" : "Profile Verification Rejected";
         const body = approve
             ? "Congratulations! Your profile has been verified. Your verified badge is now visible."
@@ -1100,7 +1100,7 @@ export class UsersService {
         await this.firebaseNotificationService.sendToUser(targetUserId, {
             title,
             body,
-            type: notifType as any,
+            type: notifType,
             data: { userId: targetUserId },
         });
 

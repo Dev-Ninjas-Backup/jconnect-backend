@@ -349,6 +349,8 @@ export enum NotificationType {
     UPLOAD_PROOF = "UPLOAD_PROOF",
     follow = "follow",
     NEW_ORDER = "NEW_ORDER",
+    PROFILE_VERIFICATION_APPROVED = "PROFILE_VERIFICATION_APPROVED",
+    PROFILE_VERIFICATION_REJECTED = "PROFILE_VERIFICATION_REJECTED",
 }
 
 // Send templated notification

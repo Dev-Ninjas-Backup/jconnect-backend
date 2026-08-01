@@ -379,8 +379,8 @@ export class FirebaseNotificationService {
     /**
      *  --------------- Map our custom NotificationType to Prisma's enum-------------------
      */
-    private mapToPrismaNotificationType(type: NotificationType): any {
-        const mapping: Partial<Record<NotificationType, string>> = {
+    private mapToPrismaNotificationType(type: NotificationType | string): any {
+        const mapping: Record<string, string> = {
             [NotificationType.SERVICE_REQUEST]: "Service",
             [NotificationType.PAYMENT_RECEIVED]: "Payment",
             [NotificationType.ORDER_UPDATE]: "Service",
@@ -389,15 +389,20 @@ export class FirebaseNotificationService {
             [NotificationType.NEW_FOLLOWER]: "UserRegistration",
             [NotificationType.NEW_LIKE]: "UserRegistration",
             [NotificationType.NEW_COMMENT]: "UserRegistration",
-            [NotificationType.REVIEW_RECEIVED]: "UserRegistration",
+            [NotificationType.REVIEW_RECEIVED]: "REVIEW_RECEIVED",
             [NotificationType.ANNOUNCEMENT]: "UserRegistration",
             [NotificationType.CUSTOM]: "UserRegistration",
-            [NotificationType.SERVICE_REQUEST_ACCEPTED]: "Service",
-            [NotificationType.SERVICE_REQUEST_DECLINED]: "Service",
-            [NotificationType.UPLOAD_PROOF]: "Service",
+            [NotificationType.SERVICE_REQUEST_ACCEPTED]: "SERVICE_REQUEST_ACCEPTED",
+            [NotificationType.SERVICE_REQUEST_DECLINED]: "SERVICE_REQUEST_REJECTED",
+            [NotificationType.UPLOAD_PROOF]: "UPLOAD_PROOF",
+            [NotificationType.follow]: "follow",
+            [NotificationType.PROFILE_VERIFICATION_APPROVED]: "PROFILE_VERIFICATION_APPROVED",
+            [NotificationType.PROFILE_VERIFICATION_REJECTED]: "PROFILE_VERIFICATION_REJECTED",
         };
 
-        return mapping[type] || null;
+        // Use explicit mapping when present; otherwise pass through Prisma-aligned type strings
+        // (e.g. REPOST_*, ESCROW_*, LISTING_*, PROFILE_VERIFICATION_*)
+        return mapping[type] ?? type;
     }
 
     /**
@@ -544,6 +549,22 @@ export class FirebaseNotificationService {
                     clientId: d.clientId,
                     clientName: d.clientName,
                 },
+            }),
+            [NotificationType.PROFILE_VERIFICATION_APPROVED]: (d) => ({
+                title: "Profile Verified",
+                body:
+                    d.body ||
+                    "Congratulations! Your profile has been verified. Your verified badge is now visible.",
+                type: NotificationType.PROFILE_VERIFICATION_APPROVED,
+                data: { userId: d.userId },
+            }),
+            [NotificationType.PROFILE_VERIFICATION_REJECTED]: (d) => ({
+                title: "Profile Verification Rejected",
+                body:
+                    d.body ||
+                    "Your profile verification request was not approved. Contact support for more information.",
+                type: NotificationType.PROFILE_VERIFICATION_REJECTED,
+                data: { userId: d.userId },
             }),
         };
 

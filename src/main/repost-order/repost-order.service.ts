@@ -273,7 +273,14 @@ export class RepostOrderService {
             throw new BadRequestException("No proof to review");
 
         if (dto.action === "ACCEPT") {
-            return this.releaseEscrow(orderId, order, "buyer_approved");
+            const completed = await this.releaseEscrow(orderId, order, "buyer_approved");
+            this.gateway.emitProofReviewed({
+                ...order,
+                ...completed,
+                status: RepostOrderStatus.COMPLETED,
+                reviewAction: "ACCEPT",
+            });
+            return completed;
         }
 
         if (dto.action === "REJECT") {
@@ -284,22 +291,39 @@ export class RepostOrderService {
                 data: { status: RepostOrderStatus.REFUNDED },
             });
             const priceStr = `$${(order.amount / 100).toFixed(2)}`;
+            const refundedOrder = { ...order, ...updated, status: RepostOrderStatus.REFUNDED };
+
             await Promise.all([
                 this.notifications.sendToUser(order.buyerId, {
                     title: "Refund Issued",
                     body: `Your ${priceStr} refund for Order #${order.orderCode} has been initiated.`,
                     type: "ESCROW_REFUND_ISSUED" as any,
-                    data: { orderId, orderCode: order.orderCode, amount: order.amount.toString() },
+                    data: {
+                        orderId,
+                        orderCode: order.orderCode,
+                        amount: order.amount.toString(),
+                        action: "REJECT",
+                    },
                 }),
                 this.notifications.sendToUser(order.sellerId, {
                     title: "Proof Rejected",
                     body: `@${order.buyer?.username ?? "The buyer"} rejected your proof for Order #${order.orderCode}. The order has been refunded.`,
-                    type: "ESCROW_REFUND_PROCESSED" as any,
-                    data: { orderId, orderCode: order.orderCode },
+                    type: "REPOST_PROOF_REJECTED" as any,
+                    data: {
+                        orderId,
+                        orderCode: order.orderCode,
+                        action: "REJECT",
+                        buyerId: order.buyerId,
+                    },
                 }),
             ]);
 
-            this.gateway.emitOrderRefunded({ ...order, status: RepostOrderStatus.REFUNDED });
+            // Live socket: proof_reviewed was declared but never emitted on reject
+            this.gateway.emitProofReviewed({
+                ...refundedOrder,
+                reviewAction: "REJECT",
+            });
+            this.gateway.emitOrderRefunded(refundedOrder);
             return updated;
         }
 
@@ -399,26 +423,6 @@ export class RepostOrderService {
                 title: "Funds Released to Your Balance",
                 body: `You received ${sellerPriceStr} from @${buyerName} for Order #${order.orderCode}. Funds are now in your balance.`,
                 type: "REPOST_SELLER_FUNDS_RELEASED" as any,
-                data: {
-                    orderId: order.id,
-                    orderCode: order.orderCode,
-                    amount: order.sellerAmount.toString(),
-                },
-            }),
-            this.notifications.sendToUser(order.buyerId, {
-                title: "Escrow Released",
-                body: `Escrow of ${priceStr} for Order #${order.orderCode} has been released to @${sellerName}.`,
-                type: "ESCROW_FUNDS_RELEASED" as any,
-                data: {
-                    orderId: order.id,
-                    orderCode: order.orderCode,
-                    amount: order.amount.toString(),
-                },
-            }),
-            this.notifications.sendToUser(order.sellerId, {
-                title: "Funds Released",
-                body: `Your ${sellerPriceStr} from @${buyerName}'s Order #${order.orderCode} is now available in your balance.`,
-                type: "ESCROW_FUNDS_RELEASED" as any,
                 data: {
                     orderId: order.id,
                     orderCode: order.orderCode,
