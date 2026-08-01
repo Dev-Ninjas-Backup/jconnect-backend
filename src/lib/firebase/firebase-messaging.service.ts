@@ -18,6 +18,19 @@ export class FirebaseMessagingService {
     ) {}
 
     /**
+     * FCM data payloads must be Record<string, string> or the send fails entirely.
+     */
+    private toFcmData(data?: Record<string, any>): Record<string, string> | undefined {
+        if (!data) return undefined;
+        const out: Record<string, string> = {};
+        for (const [key, value] of Object.entries(data)) {
+            if (value === undefined || value === null) continue;
+            out[key] = typeof value === "string" ? value : JSON.stringify(value);
+        }
+        return out;
+    }
+
+    /**
      * Send notification to a single device
      */
     async sendToDevice(
@@ -39,7 +52,7 @@ export class FirebaseMessagingService {
                           imageUrl: notification.imageUrl,
                       }
                     : undefined,
-                data: data || {},
+                data: this.toFcmData(data),
                 android: android
                     ? {
                           priority: android.priority || "high",
@@ -134,7 +147,7 @@ export class FirebaseMessagingService {
                           imageUrl: notification.imageUrl,
                       }
                     : undefined,
-                data: data || {},
+                data: this.toFcmData(data),
                 android: android
                     ? {
                           priority: android.priority || "high",
@@ -229,7 +242,7 @@ export class FirebaseMessagingService {
                           imageUrl: notification.imageUrl,
                       }
                     : undefined,
-                data: data || {},
+                data: this.toFcmData(data),
                 android: android
                     ? {
                           priority: android.priority || "high",

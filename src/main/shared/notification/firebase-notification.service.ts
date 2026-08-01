@@ -41,10 +41,12 @@ export class FirebaseNotificationService {
             }
 
             // ------------------Check notification settings ----------------
-            const canSend = await this.checkNotificationSettings(userId, notification.type);
-            if (!canSend) {
-                this.logger.log(`User ${userId} has disabled ${notification.type} notifications`);
-                return { success: false, error: "User has disabled this notification type" };
+            // Disabled = skip push only; still persist in-app so notification center stays in sync
+            const canSendPush = await this.checkNotificationSettings(userId, notification.type);
+            if (!canSendPush) {
+                this.logger.warn(
+                    `User ${userId} has disabled ${notification.type} push — saving in-app only`,
+                );
             }
 
             const hasValidToken =
@@ -52,14 +54,16 @@ export class FirebaseNotificationService {
 
             let result: { success: boolean; error?: string } = {
                 success: false,
-                error: "User has no FCM token",
+                error: !canSendPush
+                    ? "User has disabled this notification type"
+                    : "User has no FCM token",
             };
 
-            if (!hasValidToken) {
+            if (canSendPush && !hasValidToken) {
                 this.logger.warn(
                     `User ${userId} has no FCM token - skipping push notification but saving to DB`,
                 );
-            } else {
+            } else if (canSendPush && hasValidToken) {
                 // ------------------Send FCM notification ----------------
                 this.logger.log(
                     `Sending ${notification.type} notification to user ${userId} with FCM token`,
@@ -86,7 +90,7 @@ export class FirebaseNotificationService {
                 });
             }
 
-            // Always persist in-app notification when requested, even if FCM fails
+            // Always persist in-app notification when requested
             if (saveToDb) {
                 await this.saveNotificationToDb(userId, notification);
             }
@@ -384,7 +388,7 @@ export class FirebaseNotificationService {
             [NotificationType.SERVICE_REQUEST]: "Service",
             [NotificationType.PAYMENT_RECEIVED]: "Payment",
             [NotificationType.ORDER_UPDATE]: "Service",
-            [NotificationType.NEW_MESSAGE]: "Inquiry",
+            [NotificationType.NEW_MESSAGE]: "Message",
             [NotificationType.INQUIRY]: "Inquiry",
             [NotificationType.NEW_FOLLOWER]: "UserRegistration",
             [NotificationType.NEW_LIKE]: "UserRegistration",

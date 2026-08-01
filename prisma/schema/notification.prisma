@@ -44,6 +44,7 @@ enum NotificationType {
   Payment
   UserRegistration
   Inquiry
+  Message
   UploadProof
   PaymentReminder
   follow
