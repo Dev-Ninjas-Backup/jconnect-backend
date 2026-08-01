@@ -582,34 +582,28 @@ export class PrivateChatService {
             throw new NotFoundException(`Service request with ID ${id} not found`);
         }
 
-        // ---- Block the seller from declining the promotional attachment once
-        // the linked order has been received. Only block when the decline is
-        // coming from the seller (the service creator); other callers
-        // (buyer/admin) can still update the request as needed. ----
+        // ---- Block seller from declining promo files only after they have
+        // actually received the order (IN_PROGRESS / PROOF_SUBMITTED).
+        // Buyer paid + order still PENDING → decline is still allowed.
+        // Match ONLY by serviceRequestId — buyerId+serviceId fallback can hit
+        // an older unrelated order and block incorrectly. ----
         if (
             updateData.isDeclined === true &&
             actingUserId &&
             serviceRequest.service?.creator?.id === actingUserId
         ) {
             const linkedOrder = await this.prisma.order.findFirst({
-                where: {
-                    OR: [
-                        { serviceRequestId: id },
-                        {
-                            buyerId: serviceRequest.buyerId,
-                            serviceId: serviceRequest.serviceId ?? undefined,
-                        },
-                    ],
-                },
+                where: { serviceRequestId: id },
                 orderBy: { createdAt: "desc" },
                 select: { id: true, status: true },
             });
 
-            if (
+            const sellerHasReceivedOrder =
                 linkedOrder &&
-                linkedOrder.status !== OrderStatus.PENDING &&
-                linkedOrder.status !== OrderStatus.CANCELLED
-            ) {
+                (linkedOrder.status === OrderStatus.IN_PROGRESS ||
+                    linkedOrder.status === OrderStatus.PROOF_SUBMITTED);
+
+            if (sellerHasReceivedOrder) {
                 throw new BadRequestException(
                     "You have already received this order, so you can no longer decline the promotional attachment. Please complete the work and let the buyer confirm delivery.",
                 );
