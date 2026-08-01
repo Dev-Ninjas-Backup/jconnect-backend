@@ -238,19 +238,34 @@ export class RepostOrderService {
                     ? `@${sellerName} submitted revised proof for Order #${order.orderCode}. You have 1 hour to review.`
                     : `@${sellerName} submitted proof for Order #${order.orderCode}. You have 1 hour to review.`,
                 type: (isRedo ? "REPOST_REDO_SUBMITTED" : "REPOST_PROOF_SUBMITTED") as any,
-                data: { orderId, orderCode: order.orderCode },
+                data: {
+                    orderId: order.id,
+                    orderCode: order.orderCode,
+                    listingId: order.listingId,
+                    status: "PROOF_SUBMITTED",
+                },
             }),
             this.notifications.sendToUser(order.buyerId, {
                 title: "Review Window Started",
                 body: `You have 1 hour to review @${sellerName}'s proof for Order #${order.orderCode} before it's auto-approved.`,
                 type: "REPOST_REVIEW_WINDOW_STARTED" as any,
-                data: { orderId, orderCode: order.orderCode },
+                data: {
+                    orderId: order.id,
+                    orderCode: order.orderCode,
+                    listingId: order.listingId,
+                    status: "PROOF_SUBMITTED",
+                },
             }),
             this.notifications.sendToUser(sellerId, {
                 title: "Proof Submitted Successfully",
                 body: `Your proof for @${buyerName}'s Order #${order.orderCode} has been submitted successfully. They have 1 hour to review it.`,
                 type: "REPOST_PROOF_SENT" as any,
-                data: { orderId, orderCode: order.orderCode },
+                data: {
+                    orderId: order.id,
+                    orderCode: order.orderCode,
+                    listingId: order.listingId,
+                    status: "PROOF_SUBMITTED",
+                },
             }),
         ]);
 
@@ -299,10 +314,12 @@ export class RepostOrderService {
                     body: `Your ${priceStr} refund for Order #${order.orderCode} has been initiated.`,
                     type: "ESCROW_REFUND_ISSUED" as any,
                     data: {
-                        orderId,
+                        orderId: order.id,
                         orderCode: order.orderCode,
+                        listingId: order.listingId,
                         amount: order.amount.toString(),
                         action: "REJECT",
+                        status: "REFUNDED",
                     },
                 }),
                 this.notifications.sendToUser(order.sellerId, {
@@ -310,10 +327,12 @@ export class RepostOrderService {
                     body: `@${order.buyer?.username ?? "The buyer"} rejected your proof for Order #${order.orderCode}. The order has been refunded.`,
                     type: "REPOST_PROOF_REJECTED" as any,
                     data: {
-                        orderId,
+                        orderId: order.id,
                         orderCode: order.orderCode,
+                        listingId: order.listingId,
                         action: "REJECT",
                         buyerId: order.buyerId,
+                        status: "REFUNDED",
                     },
                 }),
             ]);
@@ -349,7 +368,13 @@ export class RepostOrderService {
                     ? `@${buyerName} requested a redo for Order #${order.orderCode}: "${dto.instructions}". You have 30 minutes remaining.`
                     : `@${buyerName} requested a redo for Order #${order.orderCode}. You have 30 minutes remaining.`,
                 type: "REPOST_REDO_REQUESTED" as any,
-                data: { orderId, orderCode: order.orderCode, instructions: dto.instructions ?? "" },
+                data: {
+                    orderId: order.id,
+                    orderCode: order.orderCode,
+                    listingId: order.listingId,
+                    instructions: dto.instructions ?? "",
+                    status: "REDO_REQUESTED",
+                },
             });
 
             this.gateway.emitRedoRequested({

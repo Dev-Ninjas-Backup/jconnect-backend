@@ -309,9 +309,12 @@ export class FirebaseNotificationService {
                 [NotificationType.NEW_MESSAGE]: "message",
                 [NotificationType.INQUIRY]: "Inquiry",
                 [NotificationType.SERVICE_REQUEST]: "Service",
+                [NotificationType.SERVICE_REQUEST_ACCEPTED]: "Service",
+                [NotificationType.SERVICE_REQUEST_DECLINED]: "Service",
+                [NotificationType.UPLOAD_PROOF]: "UploadProof",
                 [NotificationType.REVIEW_RECEIVED]: "review",
                 [NotificationType.ANNOUNCEMENT]: "post",
-                [NotificationType.ORDER_UPDATE]: "order",
+                [NotificationType.ORDER_UPDATE]: "Service",
                 [NotificationType.PAYMENT_RECEIVED]: "payment",
             };
 
@@ -354,13 +357,24 @@ export class FirebaseNotificationService {
         notification: NotificationTemplate,
     ): Promise<void> {
         try {
+            const data = notification.data || {};
+            // Prefer order/listing/request ids so clients can deep-link via entityId
+            const entityId =
+                data.orderId ||
+                data.listingId ||
+                data.serviceRequestId ||
+                data.conversationId ||
+                data.entityId ||
+                null;
+
             // -------------- Create notification record with userId ----------------
             const notificationRecord = await this.prisma.notification.create({
                 data: {
                     userId: userId,
                     title: notification.title,
                     message: notification.body,
-                    metadata: notification.data || {},
+                    entityId,
+                    metadata: data,
                 },
             });
 

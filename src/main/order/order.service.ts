@@ -84,6 +84,51 @@ export class OrdersService {
         this.privateChatGateway.emitServiceRequestUpdate(updated);
     }
 
+    /** Push + in-app notification when an order is cancelled. */
+    private async notifyOrderCancelled(
+        order: {
+            id: string;
+            orderCode: string;
+            buyerId: string;
+            sellerId: string;
+            service?: { serviceName?: string } | null;
+            buyer?: { username?: string | null } | null;
+            seller?: { username?: string | null } | null;
+        },
+        cancelledBy: "buyer" | "seller",
+    ) {
+        const serviceName = order.service?.serviceName ?? "your service";
+        const actorName =
+            cancelledBy === "buyer"
+                ? (order.buyer?.username ?? "The buyer")
+                : (order.seller?.username ?? "The seller");
+        const otherUserId = cancelledBy === "buyer" ? order.sellerId : order.buyerId;
+
+        try {
+            await this.firebaseNotificationService.sendToUser(
+                otherUserId,
+                {
+                    title: "Order Cancelled",
+                    body:
+                        cancelledBy === "buyer"
+                            ? `@${actorName} cancelled order ${order.orderCode} for "${serviceName}".`
+                            : `@${actorName} cancelled order ${order.orderCode} for "${serviceName}".`,
+                    type: "SERVICE_REQUEST_CANCELLED" as any,
+                    data: {
+                        orderId: order.id,
+                        orderCode: order.orderCode,
+                        status: "CANCELLED",
+                        cancelledBy,
+                        timestamp: new Date().toISOString(),
+                    },
+                },
+                true,
+            );
+        } catch (error) {
+            console.error(`Failed to send order cancel notification: ${error.message}`);
+        }
+    }
+
     //----------------------- CREATE ORDER -----------------------
     @HandleError("Failed to create order")
     async createOrder(buyerId: string, dto: any) {
@@ -267,6 +312,7 @@ export class OrdersService {
                     } catch (error) {
                         console.error("Failed to send cancellation email to buyer:", error);
                     }
+                    await this.notifyOrderCancelled(order, "buyer");
                     this.orderGateway.emitCancelled(updated);
                     return { ...updated, message: "Order cancelled successfully" };
                 }
@@ -293,6 +339,7 @@ export class OrdersService {
                     } catch (error) {
                         console.error("Failed to send cancellation email to seller:", error);
                     }
+                    await this.notifyOrderCancelled(order, "seller");
                     this.orderGateway.emitCancelled(updated);
                     return { ...updated, message: "Order cancelled successfully" };
                 }
@@ -352,6 +399,7 @@ export class OrdersService {
                         } catch (error) {
                             console.error("Failed to send cancellation email to seller:", error);
                         }
+                        await this.notifyOrderCancelled(order, "seller");
                         this.orderGateway.emitCancelled(updated);
                         return { ...updated, message: "Order status updated successfully" };
                     }
@@ -965,10 +1013,11 @@ export class OrdersService {
             order.buyerId,
             {
                 title: " upload proof file ",
-                body: `${updated.buyer.username} has updated the proof files for "${order.proofUrl}"`,
+                body: `${updated.seller?.username ?? "Seller"} has submitted proof for order ${order.orderCode}`,
                 type: NotificationType.UPLOAD_PROOF,
                 data: {
-                    serviceRequestId: order.buyer.id,
+                    orderId: order.id,
+                    orderCode: order.orderCode,
                     buyerId: updated.buyerId,
                     sellerId: updated.sellerId,
                     timestamp: new Date().toISOString(),

@@ -113,18 +113,18 @@ export class PrivateChatController implements OnModuleInit {
     @ApiQuery({ name: "isAccepted", type: Boolean, required: false })
     async updateIsDeclined(
         @Param("id") id: string,
-        @Query("isDeclined") isDeclined?: boolean,
-        @Query("isAccepted") isAccepted?: boolean,
+        @Query("isDeclined") isDeclined?: string,
+        @Query("isAccepted") isAccepted?: string,
         @GetUser("userId") userId?: string,
     ) {
         const updateData: { isDeclined?: boolean; isAccepted?: boolean } = {};
 
         if (isDeclined !== undefined) {
-            updateData.isDeclined = isDeclined;
+            updateData.isDeclined = isDeclined === "true" || isDeclined === "1";
         }
 
         if (isAccepted !== undefined) {
-            updateData.isAccepted = isAccepted;
+            updateData.isAccepted = isAccepted === "true" || isAccepted === "1";
         }
 
         const updatedServiceRequest = await this.privateService.updateIsDeclined(

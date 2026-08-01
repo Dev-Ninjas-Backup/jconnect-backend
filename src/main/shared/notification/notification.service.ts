@@ -67,7 +67,11 @@ export class NotificationSettingService {
     async getUserSpecificNotification(userId: string): Promise<TResponse<any>> {
         try {
             const notifications = await this.prisma.userNotification.findMany({
-                where: { userId },
+                where: {
+                    userId,
+                    // Normal chat messages are FCM-only; keep Inquiry and everything else in REST
+                    NOT: { type: "Message" },
+                },
                 include: {
                     notification: {
                         select: {

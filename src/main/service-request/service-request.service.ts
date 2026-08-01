@@ -195,7 +195,7 @@ export class ServiceRequestService {
                         {
                             title: "✅ Service Request Accepted",
                             body: `${sellerName} has accepted your service request for "${serviceName}"`,
-                            type: NotificationType.SERVICE_REQUEST,
+                            type: NotificationType.SERVICE_REQUEST_ACCEPTED,
                             data: {
                                 serviceRequestId: id,
                                 sellerId: serviceRequest.service.creator.id,
@@ -233,7 +233,7 @@ export class ServiceRequestService {
                         {
                             title: "❌ Service Request Declined",
                             body: `${sellerName} has declined your service request for "${serviceName}"`,
-                            type: NotificationType.SERVICE_REQUEST,
+                            type: NotificationType.SERVICE_REQUEST_DECLINED,
                             data: {
                                 serviceRequestId: id,
                                 sellerId: serviceRequest.service.creator.id,

@@ -141,7 +141,7 @@ export class PrivateChatService {
                         timestamp: message.createdAt.toISOString(),
                     },
                 },
-                true,
+                false, // FCM only — do not show normal messages in REST notification list
             );
             console.log(` Firebase notification sent to user ${recipientId}`);
         } catch (error) {
@@ -652,16 +652,32 @@ export class PrivateChatService {
                     "Seller";
                 const serviceName = updated.service.serviceName || "Your service request";
 
+                const linkedOrder = await this.prisma.order.findFirst({
+                    where: {
+                        OR: [
+                            { serviceRequestId: id },
+                            {
+                                buyerId: updated.buyerId,
+                                serviceId: updated.serviceId ?? undefined,
+                            },
+                        ],
+                    },
+                    orderBy: { createdAt: "desc" },
+                    select: { id: true, orderCode: true },
+                });
+
                 if (updateData.isAccepted === true) {
                     // ---------------- Send acceptance notification to buyer ----------------
                     await this.firebaseNotificationService.sendToUser(
                         updated.buyerId,
                         {
-                            title: " Service Request Accepted",
+                            title: "Service Request Accepted",
                             body: `${sellerName} has accepted your service request for "${serviceName}"`,
-                            type: NotificationType.SERVICE_REQUEST,
+                            type: NotificationType.SERVICE_REQUEST_ACCEPTED,
                             data: {
                                 serviceRequestId: id,
+                                orderId: linkedOrder?.id ?? "",
+                                orderCode: linkedOrder?.orderCode ?? "",
                                 sellerId: updated.service.creator.id,
                                 sellerName,
                                 serviceName,
@@ -693,11 +709,13 @@ export class PrivateChatService {
                     await this.firebaseNotificationService.sendToUser(
                         updated.buyerId,
                         {
-                            title: " Service Request Declined",
+                            title: "Service Request Declined",
                             body: `${sellerName} has declined your service request for "${serviceName}"`,
-                            type: NotificationType.SERVICE_REQUEST,
+                            type: NotificationType.SERVICE_REQUEST_DECLINED,
                             data: {
                                 serviceRequestId: id,
+                                orderId: linkedOrder?.id ?? "",
+                                orderCode: linkedOrder?.orderCode ?? "",
                                 sellerId: updated.service.creator.id,
                                 sellerName,
                                 serviceName,
@@ -725,7 +743,7 @@ export class PrivateChatService {
                 }
             }
         } catch (error) {
-            console.error(`Failed to send notification: ${error.message}`);
+            console.error(`Failed to send accept/decline notification: ${error.message}`);
         }
 
         // -------------Notify order info page listeners in real-time----------------
@@ -815,14 +833,30 @@ export class PrivateChatService {
                     "Seller";
                 const serviceName = updated.service.serviceName || "Your service request";
 
+                const linkedOrder = await this.prisma.order.findFirst({
+                    where: {
+                        OR: [
+                            { serviceRequestId: id },
+                            {
+                                buyerId: updated.buyerId,
+                                serviceId: updated.serviceId ?? undefined,
+                            },
+                        ],
+                    },
+                    orderBy: { createdAt: "desc" },
+                    select: { id: true, orderCode: true },
+                });
+
                 await this.firebaseNotificationService.sendToUser(
                     updated.service.creator.id,
                     {
-                        title: "📁 upload proof file ",
-                        body: `${updated.buyer.username} has updated the proof files for "${serviceName}"`,
+                        title: "Promotion files updated",
+                        body: `${updated.buyer.username} has updated the files for "${serviceName}"`,
                         type: NotificationType.UPLOAD_PROOF,
                         data: {
                             serviceRequestId: id,
+                            orderId: linkedOrder?.id ?? "",
+                            orderCode: linkedOrder?.orderCode ?? "",
                             buyerId: updated.buyerId,
                             serviceName,
                             timestamp: new Date().toISOString(),
@@ -838,6 +872,7 @@ export class PrivateChatService {
                 this.eventEmitter.emit("service_request.files_updated", {
                     info: {
                         serviceRequestId: id,
+                        orderId: linkedOrder?.id,
                         buyerId: updated.buyerId,
                         buyerName: updated.buyer.username,
                         serviceName,
