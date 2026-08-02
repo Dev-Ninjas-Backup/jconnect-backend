@@ -231,7 +231,7 @@ export class ServiceRequestService {
                     await this.firebaseNotificationService.sendToUser(
                         serviceRequest.buyerId,
                         {
-                            title: "❌ Service Request Declined",
+                            title: "Promotion File Declined",
                             body: `${sellerName} has declined your service request for "${serviceName}"`,
                             type: NotificationType.SERVICE_REQUEST_DECLINED,
                             data: {

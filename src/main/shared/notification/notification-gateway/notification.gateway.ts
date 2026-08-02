@@ -435,7 +435,7 @@ export class NotificationGateway
             const buyerId = payload.info.buyerId;
             const notificationData = {
                 type: EVENT_TYPES.SERVICE_REQUEST_DECLINED,
-                title: "Service Request Declined",
+                title: "Promotion File Declined",
                 message: `${payload.info.sellerName} has declined your service request for "${payload.info.serviceName}"`,
                 createdAt: new Date(),
                 meta: {

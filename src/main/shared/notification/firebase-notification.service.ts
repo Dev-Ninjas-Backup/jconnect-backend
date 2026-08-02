@@ -526,7 +526,7 @@ export class FirebaseNotificationService {
                 },
             }),
             [NotificationType.SERVICE_REQUEST_DECLINED]: (d) => ({
-                title: "Service Request Declined",
+                title: "Promotion File Declined",
                 body: `${d.sellerName} has declined your service request for "${d.serviceName}". Reason: ${d.reason || "No reason provided"}`,
                 type: NotificationType.SERVICE_REQUEST_DECLINED,
                 data: {

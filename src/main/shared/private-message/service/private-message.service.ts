@@ -703,7 +703,7 @@ export class PrivateChatService {
                     await this.firebaseNotificationService.sendToUser(
                         updated.buyerId,
                         {
-                            title: "Service Request Declined",
+                            title: "Promotion File Declined",
                             body: `${sellerName} has declined your service request for "${serviceName}"`,
                             type: NotificationType.SERVICE_REQUEST_DECLINED,
                             data: {
