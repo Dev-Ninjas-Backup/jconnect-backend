@@ -312,6 +312,8 @@ export class FirebaseNotificationService {
                 [NotificationType.SERVICE_REQUEST_ACCEPTED]: "SERVICE_REQUEST_ACCEPTED",
                 [NotificationType.SERVICE_REQUEST_DECLINED]: "SERVICE_REQUEST_REJECTED",
                 [NotificationType.UPLOAD_PROOF]: "UPLOAD_PROOF",
+                // Same preference as upload-proof; no new toggle column
+                [NotificationType.PROOF_REJECTED]: "UPLOAD_PROOF",
                 [NotificationType.REVIEW_RECEIVED]: "REVIEW_RECEIVED",
                 [NotificationType.ANNOUNCEMENT]: "post",
                 [NotificationType.ORDER_UPDATE]: "ORDER_UPDATE",
@@ -419,6 +421,7 @@ export class FirebaseNotificationService {
             [NotificationType.SERVICE_REQUEST_ACCEPTED]: "SERVICE_REQUEST_ACCEPTED",
             [NotificationType.SERVICE_REQUEST_DECLINED]: "SERVICE_REQUEST_REJECTED",
             [NotificationType.UPLOAD_PROOF]: "UPLOAD_PROOF",
+            [NotificationType.PROOF_REJECTED]: "PROOF_REJECTED",
             [NotificationType.follow]: "follow",
             [NotificationType.PROFILE_VERIFICATION_APPROVED]: "PROFILE_VERIFICATION_APPROVED",
             [NotificationType.PROFILE_VERIFICATION_REJECTED]: "PROFILE_VERIFICATION_REJECTED",
@@ -549,6 +552,21 @@ export class FirebaseNotificationService {
                     serviceName: d.serviceName,
                     uploadedFileUrl: d.uploadedFileUrl,
                     uploadedByUserId: d.uploadedByUserId,
+                },
+            }),
+            [NotificationType.PROOF_REJECTED]: (d) => ({
+                title: "Proof Rejected",
+                body:
+                    d.body ||
+                    `@${d.buyerName ?? "The buyer"} rejected your proof for order ${d.orderCode}. Please re-upload proof.`,
+                type: NotificationType.PROOF_REJECTED,
+                data: {
+                    orderId: d.orderId,
+                    orderCode: d.orderCode,
+                    serviceRequestId: d.serviceRequestId ?? "",
+                    buyerId: d.buyerId,
+                    sellerId: d.sellerId,
+                    action: "PROOF_CANCELLED",
                 },
             }),
             [NotificationType.follow]: (d) => ({

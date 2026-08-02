@@ -1306,6 +1306,28 @@ export class OrdersService {
                 // -------Continue even if email fails -------
             }
 
+            // FCM + in-app history (REST). Socket is emitted below.
+            // Seller needs to know buyer rejected/cancelled their proof.
+            await this.firebaseNotificationService.sendToUser(
+                order.sellerId,
+                {
+                    title: "Proof Rejected",
+                    body: `@${order.buyer?.username ?? "The buyer"} rejected your proof for order ${order.orderCode}. Please re-upload proof.`,
+                    type: NotificationType.PROOF_REJECTED,
+                    data: {
+                        orderId: order.id,
+                        orderCode: order.orderCode,
+                        serviceRequestId: order.serviceRequestId ?? "",
+                        buyerId: order.buyerId,
+                        sellerId: order.sellerId,
+                        action: "PROOF_CANCELLED",
+                        status: updatedOrder.status,
+                        timestamp: new Date().toISOString(),
+                    },
+                },
+                true,
+            );
+
             this.orderGateway.emitProofCancelled(updatedOrder);
             return updatedOrder;
         }
