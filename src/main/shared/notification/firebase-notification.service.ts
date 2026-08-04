@@ -558,7 +558,9 @@ export class FirebaseNotificationService {
                 title: "Proof Rejected",
                 body:
                     d.body ||
-                    `@${d.buyerName ?? "The buyer"} rejected your proof for order ${d.orderCode}. Please re-upload proof.`,
+                    (d.reason
+                        ? `@${d.buyerName ?? "The buyer"} rejected your proof for order ${d.orderCode}: "${d.reason}". Please re-upload proof.`
+                        : `@${d.buyerName ?? "The buyer"} rejected your proof for order ${d.orderCode}. Please re-upload proof.`),
                 type: NotificationType.PROOF_REJECTED,
                 data: {
                     orderId: d.orderId,
@@ -567,6 +569,7 @@ export class FirebaseNotificationService {
                     buyerId: d.buyerId,
                     sellerId: d.sellerId,
                     action: "PROOF_CANCELLED",
+                    reason: d.reason ?? "",
                 },
             }),
             [NotificationType.follow]: (d) => ({

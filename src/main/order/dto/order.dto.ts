@@ -39,6 +39,18 @@ export class UpdateDeliveryDateDto {
     deliveryDate: string;
 }
 
+export class RejectProofDto {
+    @ApiProperty({
+        example: "The uploaded screenshot does not match the agreed promotion date.",
+        description: "Required when rejecting proof. Explains why the buyer rejected the proof.",
+        required: false,
+    })
+    @IsOptional()
+    @IsString()
+    @IsNotEmpty({ message: "Rejection reason cannot be empty" })
+    reason?: string;
+}
+
 export class GetMyOrdersDto {
     @IsOptional()
     @IsEnum(OrderStatus)

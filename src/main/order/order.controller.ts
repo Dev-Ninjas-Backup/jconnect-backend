@@ -25,7 +25,7 @@ import {
 } from "@nestjs/swagger";
 import { OrderStatus } from "@prisma/client";
 import { PrismaService } from "src/lib/prisma/prisma.service";
-import { UpdateDeliveryDateDto } from "./dto/order.dto";
+import { UpdateDeliveryDateDto, RejectProofDto } from "./dto/order.dto";
 import { OrdersService } from "./order.service";
 
 @Controller("orders")
@@ -214,21 +214,27 @@ export class OrdersController {
     @ApiBearerAuth()
     @ValidateUser()
     @ApiOperation({
-        summary: "Update isCancalProofSubmitted and clear proofUrl if true",
+        summary: "Reject or restore order proof submission",
         description:
-            "If isCancalProofSubmitted is true, proofUrl will be emptied. If false, proofUrl remains unchanged.",
+            "When isCancalProofSubmitted=true, buyer must provide a reason in the body. Proof URLs are cleared and the reason is stored. When false, proof is restored and the reason is cleared.",
     })
     @ApiQuery({
         name: "isCancalProofSubmitted",
         required: true,
         type: Boolean,
-        description: "Set to true to cancel proof (clears proofUrl), false to restore",
+        description: "Set to true to reject proof (clears proofUrl), false to restore",
+    })
+    @ApiBody({
+        type: RejectProofDto,
+        required: false,
+        description: "Required when rejecting (isCancalProofSubmitted=true)",
     })
     async updateCancelProof(
         @Param("id") orderId: string,
         @Query("isCancalProofSubmitted") isCancalProofSubmitted: string,
+        @Body() body?: RejectProofDto,
     ) {
         const boolValue = isCancalProofSubmitted === "true";
-        return this.ordersService.updateCancalProofSubmitted(orderId, boolValue);
+        return this.ordersService.updateCancalProofSubmitted(orderId, boolValue, body?.reason);
     }
 }
