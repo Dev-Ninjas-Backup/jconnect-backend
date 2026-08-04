@@ -281,7 +281,7 @@ back to `false` and emits `order:service_request_updated`.
 | `PATCH /orders/:id/status` (`PROOF_SUBMITTED`) | `updateStatus` | `emitStatusChange → PROOF_SUBMITTED` |
 | `PATCH /orders/:id/status` (`RELEASED`) | `updateStatus` | `emitStatusChange → RELEASED` |
 | `PATCH /orders/:id/status` (`CANCELLED`) | `updateStatus` | `emitStatusChange → CANCELLED` |
-| `PATCH /orders/:id/cancel-proof` (true) | `updateCancalProofSubmitted` | `emitProofCancelled` |
+| `PATCH /orders/:id/cancel-proof` (true + body `{ reason }`) | `updateCancalProofSubmitted` | `emitProofCancelled` |
 | `PATCH /orders/:id/cancel-proof` (false) | `updateCancalProofSubmitted` | `emitStatusChange` |
 | `PATCH /orders/:id/delivery-date` | `updateDeliveryDate` | `emitDeliveryDateUpdated` |
 | `POST /orders/:id/proof` | `submitProof` | `emitProofSubmitted` |

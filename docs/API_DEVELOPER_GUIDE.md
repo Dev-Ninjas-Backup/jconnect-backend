@@ -323,7 +323,7 @@ The scheduler fires every minute and sends pushes to the seller automatically:
 | POST | `/orders/ProofUpload?orderId=` | USER | Seller: upload proof file |
 | PATCH | `/orders/:id/status?status=` | USER | Update order status |
 | PATCH | `/orders/:id/delivery-date` | USER | Update delivery date |
-| PATCH | `/orders/:id/cancel-proof?isCancalProofSubmitted=` | USER | Cancel proof submission |
+| PATCH | `/orders/:id/cancel-proof?isCancalProofSubmitted=` | USER | Reject proof (body `{ "reason": "..." }` required when true) or restore |
 | DELETE | `/orders/delete/:orderId` | USER | Delete order (buyer/admin) |
 
 ### Service Order Status Flow
