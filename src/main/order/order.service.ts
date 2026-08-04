@@ -898,6 +898,8 @@ export class OrdersService {
                 proofUrl: {
                     push: proofUrls,
                 },
+                isCancalProofSubmitted: false,
+                proofRejectReason: null,
             },
             include: {
                 service: true,
@@ -1028,7 +1030,9 @@ export class OrdersService {
             },
             true,
         );
-        console.log(`📁 UPLOAD_PROOF notification sent to buyer ${order.buyerId} for order ${order.id}`);
+        console.log(
+            `📁 UPLOAD_PROOF notification sent to buyer ${order.buyerId} for order ${order.id}`,
+        );
 
         this.orderGateway.emitProofSubmitted(updated);
         return updated;
@@ -1165,7 +1169,11 @@ export class OrdersService {
         };
     }
 
-    async updateCancalProofSubmitted(orderId: string, isCancalProofSubmitted: boolean) {
+    async updateCancalProofSubmitted(
+        orderId: string,
+        isCancalProofSubmitted: boolean,
+        reason?: string,
+    ) {
         const order = await this.prisma.order.findUnique({
             where: { id: orderId },
             include: {
@@ -1195,13 +1203,21 @@ export class OrdersService {
             throw new NotFoundException("Order not found");
         }
 
-        // যদি true হয় তাহলে proofUrl empty করে দিবে
+        // যদি true হয় তাহলে proofUrl empty করে দিবে — reason required
         if (isCancalProofSubmitted) {
+            const trimmedReason = reason?.trim();
+            if (!trimmedReason) {
+                throw new BadRequestException(
+                    "Please provide a reason for rejecting the proof before submitting.",
+                );
+            }
+
             const updatedOrder = await this.prisma.order.update({
                 where: { id: orderId },
                 data: {
                     isCancalProofSubmitted: true,
                     proofUrl: [],
+                    proofRejectReason: trimmedReason,
                 },
                 include: {
                     service: true,
@@ -1246,6 +1262,7 @@ export class OrdersService {
                             .info-item { margin: 10px 0; }
                             .label { font-weight: 600; color: #374151; }
                             .value { color: #6b7280; }
+                            .reason-box { background: #fff7ed; border: 1px solid #fed7aa; padding: 16px; margin: 20px 0; border-radius: 8px; }
                             .footer { text-align: center; padding: 25px; background: #f8fafc; color: #64748b; font-size: 13px; border-top: 1px solid #e2e8f0; }
                             .brand-name { color: #f59e0b; font-weight: 600; }
                         </style>
@@ -1284,7 +1301,12 @@ export class OrdersService {
                                     </div>
                                 </div>
 
-                                <p style="font-size: 15px; color: #475569; margin: 25px 0;">The proof submission for this order has been cancelled and all previously uploaded proof files have been removed. You may need to re-upload the proof when ready.</p>
+                                <div class="reason-box">
+                                    <p style="margin: 0 0 8px 0; font-weight: 600; color: #9a3412;">Rejection reason:</p>
+                                    <p style="margin: 0; color: #7c2d12;">${trimmedReason.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</p>
+                                </div>
+
+                                <p style="font-size: 15px; color: #475569; margin: 25px 0;">The proof submission for this order has been cancelled and all previously uploaded proof files have been removed. Please re-upload proof that addresses the buyer's feedback.</p>
                                 
                                 <p style="font-size: 15px; color: #475569;">If you have any questions or concerns about this order, please don't hesitate to reach out to our support team.</p>
                                 
@@ -1312,7 +1334,7 @@ export class OrdersService {
                 order.sellerId,
                 {
                     title: "Proof Rejected",
-                    body: `@${order.buyer?.username ?? "The buyer"} rejected your proof for order ${order.orderCode}. Please re-upload proof.`,
+                    body: `@${order.buyer?.username ?? "The buyer"} rejected your proof for order ${order.orderCode}: "${trimmedReason}". Please re-upload proof.`,
                     type: NotificationType.PROOF_REJECTED,
                     data: {
                         orderId: order.id,
@@ -1321,6 +1343,7 @@ export class OrdersService {
                         buyerId: order.buyerId,
                         sellerId: order.sellerId,
                         action: "PROOF_CANCELLED",
+                        reason: trimmedReason,
                         status: updatedOrder.status,
                         timestamp: new Date().toISOString(),
                     },
@@ -1337,6 +1360,7 @@ export class OrdersService {
             where: { id: orderId },
             data: {
                 isCancalProofSubmitted: false,
+                proofRejectReason: null,
             },
             include: {
                 service: true,
