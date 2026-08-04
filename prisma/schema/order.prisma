@@ -37,6 +37,7 @@ model Order {
   proofUrl               String[]
   proofSubmittedAt       DateTime @updatedAt
   isCancalProofSubmitted Boolean  @default(false)
+  proofRejectReason      String?  // Buyer's reason when rejecting submitted proof
 
   //                   Relations
   buyer          User            @relation("OrderBuyer", fields: [buyerId], references: [id], onDelete: Cascade)
