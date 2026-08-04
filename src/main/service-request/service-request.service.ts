@@ -1,4 +1,4 @@
-import { HttpException, Injectable } from "@nestjs/common";
+import { BadRequestException, HttpException, Injectable } from "@nestjs/common";
 import { PrismaService } from "src/lib/prisma/prisma.service";
 
 import { HandleError } from "@common/error/handle-error.decorator";
@@ -6,7 +6,7 @@ import { AwsService } from "@main/aws/aws.service";
 import { FirebaseNotificationService } from "@main/shared/notification/firebase-notification.service";
 import { EVENT_TYPES } from "@main/shared/notification/interface/events.name";
 import { EventEmitter2 } from "@nestjs/event-emitter";
-import { ServiceRequestStatus } from "@prisma/client";
+import { OrderStatus, ServiceRequestStatus } from "@prisma/client";
 import { NotificationType } from "src/lib/firebase/dto/notification.dto";
 import { CreateServiceRequestDto } from "./dto/create-service-request.dto";
 
@@ -120,6 +120,29 @@ export class ServiceRequestService {
             throw new HttpException("Service request not found", 404);
         }
 
+        // Link the newest unlinked PENDING order for this buyer+service so
+        // decline guards can resolve the attachment after the seller receives.
+        if (isPaid && serviceRequest.serviceId) {
+            const unlinkedOrder = await this.prisma.order.findFirst({
+                where: {
+                    buyerId: serviceRequest.buyerId,
+                    serviceId: serviceRequest.serviceId,
+                    serviceRequestId: null,
+                    status: OrderStatus.PENDING,
+                    createdAt: { gte: serviceRequest.createdAt },
+                },
+                orderBy: { createdAt: "desc" },
+                select: { id: true },
+            });
+
+            if (unlinkedOrder) {
+                await this.prisma.order.update({
+                    where: { id: unlinkedOrder.id },
+                    data: { serviceRequestId: id },
+                });
+            }
+        }
+
         return this.prisma.serviceRequest.update({
             where: { id },
             data: {
@@ -135,7 +158,11 @@ export class ServiceRequestService {
 
     // ------------ decline or accept service request-----------------
     @HandleError("Failed to update service request status")
-    async updateIsDeclined(id: string, updateData: { isDeclined?: boolean; isAccepted?: boolean }) {
+    async updateIsDeclined(
+        id: string,
+        updateData: { isDeclined?: boolean; isAccepted?: boolean },
+        actingUserId?: string,
+    ) {
         const serviceRequest = await this.prisma.serviceRequest.findUnique({
             where: { id },
             include: {
@@ -168,6 +195,45 @@ export class ServiceRequestService {
                 "At least one field (isDeclined or isAccepted) must be provided",
                 400,
             );
+        }
+
+        // Block seller decline after the linked order has been received.
+        if (
+            updateData.isDeclined === true &&
+            actingUserId &&
+            serviceRequest.service?.creator?.id === actingUserId
+        ) {
+            const receivedStatuses: OrderStatus[] = [
+                OrderStatus.IN_PROGRESS,
+                OrderStatus.PROOF_SUBMITTED,
+                OrderStatus.RELEASED,
+            ];
+
+            const linkedOrder = await this.prisma.order.findFirst({
+                where: {
+                    OR: [
+                        { serviceRequestId: id },
+                        ...(serviceRequest.serviceId
+                            ? [
+                                  {
+                                      buyerId: serviceRequest.buyerId,
+                                      serviceId: serviceRequest.serviceId,
+                                      createdAt: { gte: serviceRequest.createdAt },
+                                      status: { in: receivedStatuses },
+                                  },
+                              ]
+                            : []),
+                    ],
+                },
+                orderBy: { createdAt: "desc" },
+                select: { id: true, status: true },
+            });
+
+            if (linkedOrder && receivedStatuses.includes(linkedOrder.status)) {
+                throw new BadRequestException(
+                    "You have already received this order, so you can no longer decline the promotional attachment. Please complete the work and let the buyer confirm delivery.",
+                );
+            }
         }
 
         const updated = await this.prisma.serviceRequest.update({

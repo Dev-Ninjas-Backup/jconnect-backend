@@ -250,8 +250,9 @@ final decision-maker.
 ### 2. Seller cannot decline the promotional attachment after receiving the order
 
 `PrivateChatService.updateIsDeclined(id, { isDeclined: true }, actingUserId)`
-checks the linked order. If the order is past `PENDING` (i.e. the seller has
-already received it), the request is rejected:
+(and the matching `ServiceRequestService` path) checks the linked order. If the
+order is `IN_PROGRESS`, `PROOF_SUBMITTED`, or `RELEASED`, the request is rejected
+with HTTP 400:
 
 ```ts
 throw new BadRequestException(
@@ -261,6 +262,11 @@ throw new BadRequestException(
 );
 ```
 
+Lookup prefers `order.serviceRequestId`, then falls back to the same
+`buyerId + serviceId` with `createdAt >= serviceRequest.createdAt` so decline
+is still blocked when payment did not persist `serviceRequestId`.
+
+Buyer paid + order still `PENDING` → decline remains allowed.
 The buyer can still re-submit documents at any time, which resets `isDeclined`
 back to `false` and emits `order:service_request_updated`.
 

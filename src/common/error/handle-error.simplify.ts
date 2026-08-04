@@ -1,6 +1,7 @@
 import {
     BadRequestException,
     ConflictException,
+    HttpException,
     InternalServerErrorException,
     NotFoundException,
     UnauthorizedException,
@@ -13,6 +14,12 @@ export function simplifyError(
     customMessage = "Operation Failed",
     record = "Record",
 ): never {
+    // Preserve Nest HTTP exceptions so clients get the real 400/404 message
+    // (e.g. decline blocked after seller received the order).
+    if (error instanceof HttpException) {
+        throw error;
+    }
+
     if (error instanceof Prisma.PrismaClientKnownRequestError) {
         switch (error.code) {
             case "P2002":

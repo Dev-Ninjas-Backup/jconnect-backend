@@ -542,9 +542,9 @@ export class PrivateChatService {
      * Guards:
      *  - When the caller is the seller (service creator) and is trying to
      *    decline a promotional attachment whose linked order has already been
-     *    received (status >= IN_PROGRESS), reject the request. Once work has
-     *    started, the seller must complete the order rather than decline the
-     *    attachment.
+     *    received (IN_PROGRESS / PROOF_SUBMITTED / RELEASED), reject with a
+     *    clear BadRequestException. Pending (paid but not received) orders
+     *    can still be declined.
      */
     @HandleError("Failed to update service request", "PRIVATE_CHAT")
     async updateIsDeclined(
@@ -583,27 +583,43 @@ export class PrivateChatService {
         }
 
         // ---- Block seller from declining promo files only after they have
-        // actually received the order (IN_PROGRESS / PROOF_SUBMITTED).
+        // actually received the order (IN_PROGRESS / PROOF_SUBMITTED / RELEASED).
         // Buyer paid + order still PENDING → decline is still allowed.
-        // Match ONLY by serviceRequestId — buyerId+serviceId fallback can hit
-        // an older unrelated order and block incorrectly. ----
+        // Prefer serviceRequestId; fall back to buyer+service orders created
+        // at/after this request (payment often omits serviceRequestId). The
+        // createdAt lower bound avoids matching older unrelated orders. ----
         if (
             updateData.isDeclined === true &&
             actingUserId &&
             serviceRequest.service?.creator?.id === actingUserId
         ) {
+            const receivedStatuses: OrderStatus[] = [
+                OrderStatus.IN_PROGRESS,
+                OrderStatus.PROOF_SUBMITTED,
+                OrderStatus.RELEASED,
+            ];
+
             const linkedOrder = await this.prisma.order.findFirst({
-                where: { serviceRequestId: id },
+                where: {
+                    OR: [
+                        { serviceRequestId: id },
+                        ...(serviceRequest.serviceId
+                            ? [
+                                  {
+                                      buyerId: serviceRequest.buyerId,
+                                      serviceId: serviceRequest.serviceId,
+                                      createdAt: { gte: serviceRequest.createdAt },
+                                      status: { in: receivedStatuses },
+                                  },
+                              ]
+                            : []),
+                    ],
+                },
                 orderBy: { createdAt: "desc" },
                 select: { id: true, status: true },
             });
 
-            const sellerHasReceivedOrder =
-                linkedOrder &&
-                (linkedOrder.status === OrderStatus.IN_PROGRESS ||
-                    linkedOrder.status === OrderStatus.PROOF_SUBMITTED);
-
-            if (sellerHasReceivedOrder) {
+            if (linkedOrder && receivedStatuses.includes(linkedOrder.status)) {
                 throw new BadRequestException(
                     "You have already received this order, so you can no longer decline the promotional attachment. Please complete the work and let the buyer confirm delivery.",
                 );

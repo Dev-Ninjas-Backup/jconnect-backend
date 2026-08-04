@@ -122,6 +122,7 @@ export class ServiceRequestController {
         @Param("id") id: string,
         @Query("isDeclined") isDeclined?: string,
         @Query("isAccepted") isAccepted?: string,
+        @GetUser("userId") userId?: string,
     ) {
         const updateData: { isDeclined?: boolean; isAccepted?: boolean } = {};
 
@@ -133,7 +134,7 @@ export class ServiceRequestController {
             updateData.isAccepted = isAccepted === "true" || isAccepted === "1";
         }
 
-        return this.serviceRequestService.updateIsDeclined(id, updateData);
+        return this.serviceRequestService.updateIsDeclined(id, updateData, userId);
     }
 
     @ApiBearerAuth()
