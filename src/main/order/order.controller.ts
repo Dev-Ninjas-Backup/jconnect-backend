@@ -52,7 +52,7 @@ export class OrdersController {
         required: false,
         enum: OrderStatus,
         description:
-            "Filter orders by OrderStatus: PENDING, IN_PROGRESS, PROOF_SUBMITTED, CANCELLED, RELEASED",
+            "Filter orders by OrderStatus: PENDING, IN_PROGRESS, PROOF_SUBMITTED, RESUBMIT, CANCELLED, RELEASED",
     })
     async getMyOrders(@GetUser() user: any, @Query("status") status?: OrderStatus) {
         return this.ordersService.getOrdersByBuyer(user.userId, status);
@@ -216,7 +216,7 @@ export class OrdersController {
     @ApiOperation({
         summary: "Reject or restore order proof submission",
         description:
-            "When isCancalProofSubmitted=true, buyer must provide a reason in the body. Proof URLs are cleared and the reason is stored. When false, proof is restored and the reason is cleared.",
+            "When isCancalProofSubmitted=true, buyer must provide a reason in the body. Status becomes RESUBMIT, proof URLs are cleared, and the reason is stored for the seller timeline. When false, proof is restored to PROOF_SUBMITTED and the reason is cleared.",
     })
     @ApiQuery({
         name: "isCancalProofSubmitted",

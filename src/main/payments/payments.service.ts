@@ -256,6 +256,7 @@ export class PaymentService {
             "PENDING",
             "IN_PROGRESS",
             "PROOF_SUBMITTED",
+            "RESUBMIT",
             "CANCELLED",
             "RELEASED",
         ];
@@ -654,7 +655,7 @@ export class PaymentService {
             where: {
                 sellerId: userID,
                 status: {
-                    in: [OrderStatus.IN_PROGRESS, OrderStatus.PROOF_SUBMITTED],
+                    in: [OrderStatus.IN_PROGRESS, OrderStatus.PROOF_SUBMITTED, OrderStatus.RESUBMIT],
                 },
             },
             _sum: { seller_amount: true },
@@ -1323,6 +1324,7 @@ export class PaymentService {
                 where: { id: order.id },
                 data: {
                     status: OrderStatus.CANCELLED,
+                    cancelledAt: new Date(),
                     seller_amount: 0,
                     buyerPay: 0,
                     stripeFee: 0,
@@ -1439,6 +1441,7 @@ export class PaymentService {
             where: { id: order.id },
             data: {
                 status: OrderStatus.CANCELLED,
+                cancelledAt: new Date(),
                 isReleased: false,
                 PlatfromRevinue: order.buyerPay - order.amount,
                 seller_amount: 0,
@@ -1775,7 +1778,7 @@ export class PaymentService {
 
                     await this.prisma.order.update({
                         where: { id: order.id },
-                        data: { status: OrderStatus.RELEASED },
+                        data: { status: OrderStatus.RELEASED, releasedAt: new Date() },
                     });
 
                     this.orderGateway.emitReleased({ ...order, status: OrderStatus.RELEASED });
@@ -1829,7 +1832,7 @@ export class PaymentService {
             where: {
                 sellerId: userId,
                 status: {
-                    in: [OrderStatus.IN_PROGRESS, OrderStatus.PROOF_SUBMITTED],
+                    in: [OrderStatus.IN_PROGRESS, OrderStatus.PROOF_SUBMITTED, OrderStatus.RESUBMIT],
                 },
             },
             _sum: { seller_amount: true },

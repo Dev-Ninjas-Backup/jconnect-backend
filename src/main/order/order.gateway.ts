@@ -15,6 +15,22 @@ import { Server, Socket } from "socket.io";
 import { ENVEnum } from "src/common/enum/env.enum";
 import { PrismaService } from "src/lib/prisma/prisma.service";
 
+function orderTimeline(order: any) {
+    if (!order?.createdAt) return undefined;
+    return [
+        { status: "PENDING", at: order.createdAt, description: null },
+        { status: "IN_PROGRESS", at: order.inProgressAt ?? null, description: null },
+        { status: "PROOF_SUBMITTED", at: order.proofSubmittedAt ?? null, description: null },
+        {
+            status: "RESUBMIT",
+            at: order.resubmitAt ?? null,
+            description: order.proofRejectReason ?? null,
+        },
+        { status: "RELEASED", at: order.releasedAt ?? null, description: null },
+        { status: "CANCELLED", at: order.cancelledAt ?? null, description: null },
+    ].filter((step) => step.at);
+}
+
 export enum OrderEvents {
     ERROR = "order:error",
     SUCCESS = "order:success",
@@ -155,7 +171,10 @@ export class OrderGateway implements OnGatewayInit, OnGatewayConnection, OnGatew
             return;
         }
 
-        client.emit(OrderEvents.GET_ORDER, order);
+        client.emit(OrderEvents.GET_ORDER, {
+            ...order,
+            timeline: orderTimeline(order),
+        });
     }
 
     emitOrderCreated(order: any) {
@@ -215,6 +234,9 @@ export class OrderGateway implements OnGatewayInit, OnGatewayConnection, OnGatew
             case "PROOF_SUBMITTED":
                 this.emitProofSubmitted(order);
                 break;
+            case "RESUBMIT":
+                this.emitProofCancelled(order);
+                break;
             case "RELEASED":
                 this.emitReleased(order);
                 break;
@@ -230,7 +252,11 @@ export class OrderGateway implements OnGatewayInit, OnGatewayConnection, OnGatew
     }
 
     private push(userIds: string[], event: OrderEvents, data: any) {
-        const payload = { ...data, timestamp: new Date().toISOString() };
+        const payload = {
+            ...data,
+            timeline: orderTimeline(data),
+            timestamp: new Date().toISOString(),
+        };
         for (const uid of userIds) {
             if (uid) this.server.to(uid).emit(event, payload);
         }

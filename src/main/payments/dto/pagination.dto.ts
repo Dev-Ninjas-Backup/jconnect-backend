@@ -19,7 +19,7 @@ export class PaginationDto {
 
     @ApiProperty({
         required: false,
-        enum: ["PENDING", "IN_PROGRESS", "PROOF_SUBMITTED", "CANCELLED", "RELEASED"],
+        enum: ["PENDING", "IN_PROGRESS", "PROOF_SUBMITTED", "RESUBMIT", "CANCELLED", "RELEASED"],
         description: "Filter by order status",
     })
     @IsOptional()

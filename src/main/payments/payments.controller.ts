@@ -160,7 +160,7 @@ export class PaymentController {
     @ApiQuery({
         name: "status",
         required: false,
-        enum: ["PENDING", "IN_PROGRESS", "PROOF_SUBMITTED", "CANCELLED", "RELEASED"],
+        enum: ["PENDING", "IN_PROGRESS", "PROOF_SUBMITTED", "RESUBMIT", "CANCELLED", "RELEASED"],
         description: "Filter by order status",
     })
     @ApiQuery({

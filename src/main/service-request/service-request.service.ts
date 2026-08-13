@@ -206,6 +206,7 @@ export class ServiceRequestService {
             const receivedStatuses: OrderStatus[] = [
                 OrderStatus.IN_PROGRESS,
                 OrderStatus.PROOF_SUBMITTED,
+                OrderStatus.RESUBMIT,
                 OrderStatus.RELEASED,
             ];
 
