@@ -23,16 +23,30 @@ export class MulterService {
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         ],
         [FileType.VIDEO]: ["video/mp4", "video/webm", "video/ogg"],
-        [FileType.AUDIO]: ["audio/mpeg", "audio/ogg", "audio/wav"],
+        [FileType.AUDIO]: [
+            "audio/webm",
+            "audio/mp3",
+            "audio/mpeg",
+            "audio/wav",
+            "audio/ogg",
+            "audio/m4a",
+            "audio/x-m4a",
+            "audio/aac",
+        ],
         [FileType.PDF]: ["application/pdf"],
         [FileType.MEDIA]: [
             // <-- Combine VIDEO + AUDIO
             "video/mp4",
             "video/webm",
             "video/ogg",
+            "audio/webm",
+            "audio/mp3",
             "audio/mpeg",
-            "audio/ogg",
             "audio/wav",
+            "audio/ogg",
+            "audio/m4a",
+            "audio/x-m4a",
+            "audio/aac",
         ],
     };
 

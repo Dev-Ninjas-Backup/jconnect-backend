@@ -40,7 +40,8 @@ export class SendPrivateMessageDto {
         description: "Stored path of uploaded files (auto-filled after upload)",
     })
     @IsOptional()
-    @IsArray({ each: true })
+    @IsArray()
+    @IsString({ each: true })
     files: string[];
 
     @ApiProperty({
