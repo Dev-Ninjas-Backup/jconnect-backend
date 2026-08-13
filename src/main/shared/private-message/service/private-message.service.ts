@@ -596,6 +596,7 @@ export class PrivateChatService {
             const receivedStatuses: OrderStatus[] = [
                 OrderStatus.IN_PROGRESS,
                 OrderStatus.PROOF_SUBMITTED,
+                OrderStatus.RESUBMIT,
                 OrderStatus.RELEASED,
             ];
 

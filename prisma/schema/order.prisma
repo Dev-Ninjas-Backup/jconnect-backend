@@ -2,6 +2,7 @@ enum OrderStatus {
   PENDING
   IN_PROGRESS
   PROOF_SUBMITTED
+  RESUBMIT
   CANCELLED
   RELEASED
 }
@@ -27,6 +28,8 @@ model Order {
   deliveryDate         DateTime?
   createdAt            DateTime    @default(now())
   updatedAt            DateTime    @updatedAt
+  inProgressAt         DateTime?
+  cancelledAt          DateTime?
   disposts             Dispute[]
   // For Escrow Manual Release
   isReleased           Boolean     @default(false)
@@ -35,7 +38,8 @@ model Order {
   //                   Proof
 
   proofUrl               String[]
-  proofSubmittedAt       DateTime @updatedAt
+  proofSubmittedAt       DateTime?
+  resubmitAt             DateTime?
   isCancalProofSubmitted Boolean  @default(false)
   proofRejectReason      String?  // Buyer's reason when rejecting submitted proof
 

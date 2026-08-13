@@ -309,7 +309,7 @@ export class UsersService {
             where: {
                 sellerId: id,
                 status: {
-                    in: [OrderStatus.IN_PROGRESS, OrderStatus.PROOF_SUBMITTED],
+                    in: [OrderStatus.IN_PROGRESS, OrderStatus.PROOF_SUBMITTED, OrderStatus.RESUBMIT],
                 },
             },
             _sum: { seller_amount: true },
