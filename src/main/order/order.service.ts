@@ -17,6 +17,51 @@ import { PrismaService } from "src/lib/prisma/prisma.service";
 import Stripe from "stripe";
 import { OrderGateway } from "./order.gateway";
 
+export function buildOrderTimeline(order: {
+    createdAt: Date;
+    inProgressAt?: Date | null;
+    proofSubmittedAt?: Date | null;
+    resubmitAt?: Date | null;
+    releasedAt?: Date | null;
+    cancelledAt?: Date | null;
+    proofRejectReason?: string | null;
+}) {
+    return [
+        { status: "PENDING" as const, at: order.createdAt, description: null as string | null },
+        { status: "IN_PROGRESS" as const, at: order.inProgressAt ?? null, description: null },
+        {
+            status: "PROOF_SUBMITTED" as const,
+            at: order.proofSubmittedAt ?? null,
+            description: null,
+        },
+        {
+            status: "RESUBMIT" as const,
+            at: order.resubmitAt ?? null,
+            description: order.proofRejectReason ?? null,
+        },
+        { status: "RELEASED" as const, at: order.releasedAt ?? null, description: null },
+        { status: "CANCELLED" as const, at: order.cancelledAt ?? null, description: null },
+    ].filter((step) => step.at);
+}
+
+function statusTimestampData(status: OrderStatus): Record<string, Date> {
+    const now = new Date();
+    switch (status) {
+        case OrderStatus.IN_PROGRESS:
+            return { inProgressAt: now };
+        case OrderStatus.PROOF_SUBMITTED:
+            return { proofSubmittedAt: now };
+        case OrderStatus.RESUBMIT:
+            return { resubmitAt: now };
+        case OrderStatus.RELEASED:
+            return { releasedAt: now };
+        case OrderStatus.CANCELLED:
+            return { cancelledAt: now };
+        default:
+            return {};
+    }
+}
+
 const serviceRequestSocketInclude = {
     service: {
         include: {
@@ -248,6 +293,7 @@ export class OrdersService {
             files: showPromotionInfo ? (serviceRequest?.uploadedFileUrl ?? []) : [],
             isServiceRequestDeclined: serviceRequest?.isDeclined ?? false,
             isServiceRequestAccepted: serviceRequest?.isAccepted ?? false,
+            timeline: buildOrderTimeline(order),
         };
     }
 
@@ -279,6 +325,7 @@ export class OrdersService {
                         where: { id: order.id },
                         data: {
                             status: OrderStatus.CANCELLED,
+                            cancelledAt: new Date(),
                         },
                     });
                     await this.markLinkedServiceRequestCancelled(order);
@@ -322,6 +369,7 @@ export class OrdersService {
                         where: { id: order.id },
                         data: {
                             status: OrderStatus.CANCELLED,
+                            cancelledAt: new Date(),
                         },
                     });
                     await this.markLinkedServiceRequestCancelled(order);
@@ -347,7 +395,8 @@ export class OrdersService {
 
             if (
                 order.status === OrderStatus.IN_PROGRESS ||
-                order.status === OrderStatus.PROOF_SUBMITTED
+                order.status === OrderStatus.PROOF_SUBMITTED ||
+                order.status === OrderStatus.RESUBMIT
             ) {
                 // if buyer then they send to seller a email for calcel request
                 const isBuyer = order.buyerId === user.userId;
@@ -363,6 +412,7 @@ export class OrdersService {
                             where: { id: order.id },
                             data: {
                                 status: OrderStatus.CANCELLED,
+                                cancelledAt: new Date(),
                                 seller_amount: 0,
                                 buyerPay: 0,
                                 stripeFee: 0,
@@ -451,9 +501,13 @@ export class OrdersService {
                 throw new ForbiddenException("Only buyer can confirm delivery");
         }
 
+        if (status === OrderStatus.RESUBMIT) {
+            throw new BadRequestException("Use cancel-proof to request a proof resubmit");
+        }
+
         const updated = await this.prisma.order.update({
             where: { id },
-            data: { status },
+            data: { status, ...statusTimestampData(status) },
         });
 
         //------------------ Send status change notifications ------------------//
@@ -786,7 +840,11 @@ export class OrdersService {
         }
 
         this.orderGateway.emitStatusChange(updated);
-        return { ...updated, message: "Order status updated successfully" };
+        return {
+            ...updated,
+            timeline: buildOrderTimeline(updated),
+            message: "Order status updated successfully",
+        };
     }
 
     // -----------------------DELETE ORDER -------------------------
@@ -898,8 +956,8 @@ export class OrdersService {
                 proofUrl: {
                     push: proofUrls,
                 },
+                proofSubmittedAt: new Date(),
                 isCancalProofSubmitted: false,
-                proofRejectReason: null,
             },
             include: {
                 service: true,
@@ -1035,7 +1093,7 @@ export class OrdersService {
         );
 
         this.orderGateway.emitProofSubmitted(updated);
-        return updated;
+        return { ...updated, timeline: buildOrderTimeline(updated) };
     }
 
     async updateDeliveryDate(orderId: string, user: any, deliveryDate: string) {
@@ -1075,7 +1133,7 @@ export class OrdersService {
             where.status = status;
         }
 
-        return this.prisma.order.findMany({
+        const orders = await this.prisma.order.findMany({
             where,
             include: {
                 service: true,
@@ -1085,6 +1143,7 @@ export class OrdersService {
             },
             orderBy: { createdAt: "desc" },
         });
+        return orders.map((order) => ({ ...order, timeline: buildOrderTimeline(order) }));
     }
     @HandleError("Failed to get orders by buyer")
     async myServiceOrder(sellerId: string) {
@@ -1096,7 +1155,7 @@ export class OrdersService {
         //     where.status = { in: orderStatusFilter[filter] };
         // }
         // const seller = buyerId
-        return this.prisma.order.findMany({
+        const orders = await this.prisma.order.findMany({
             where,
             include: {
                 service: true,
@@ -1107,6 +1166,7 @@ export class OrdersService {
             },
             orderBy: { createdAt: "desc" },
         });
+        return orders.map((order) => ({ ...order, timeline: buildOrderTimeline(order) }));
     }
 
     // Get seller earnings summary
@@ -1148,7 +1208,7 @@ export class OrdersService {
             where: {
                 sellerId,
                 status: {
-                    in: [OrderStatus.IN_PROGRESS, OrderStatus.PROOF_SUBMITTED],
+                    in: [OrderStatus.IN_PROGRESS, OrderStatus.PROOF_SUBMITTED, OrderStatus.RESUBMIT],
                 },
             },
             _sum: { seller_amount: true },
@@ -1205,6 +1265,11 @@ export class OrdersService {
 
         // যদি true হয় তাহলে proofUrl empty করে দিবে — reason required
         if (isCancalProofSubmitted) {
+            if (order.status !== OrderStatus.PROOF_SUBMITTED) {
+                throw new BadRequestException(
+                    "Proof can only be rejected after it has been submitted",
+                );
+            }
             const trimmedReason = reason?.trim();
             if (!trimmedReason) {
                 throw new BadRequestException(
@@ -1215,9 +1280,11 @@ export class OrdersService {
             const updatedOrder = await this.prisma.order.update({
                 where: { id: orderId },
                 data: {
+                    status: OrderStatus.RESUBMIT,
                     isCancalProofSubmitted: true,
                     proofUrl: [],
                     proofRejectReason: trimmedReason,
+                    resubmitAt: new Date(),
                 },
                 include: {
                     service: true,
@@ -1352,15 +1419,17 @@ export class OrdersService {
             );
 
             this.orderGateway.emitProofCancelled(updatedOrder);
-            return updatedOrder;
+            return { ...updatedOrder, timeline: buildOrderTimeline(updatedOrder) };
         }
 
         // যদি false হয় তাহলে শুধু isCancalProofSubmitted আপডেট হবে, proofUrl unchanged
         const restoredOrder = await this.prisma.order.update({
             where: { id: orderId },
             data: {
+                status: OrderStatus.PROOF_SUBMITTED,
                 isCancalProofSubmitted: false,
                 proofRejectReason: null,
+                resubmitAt: null,
             },
             include: {
                 service: true,
@@ -1389,6 +1458,6 @@ export class OrdersService {
         // proof is restored.
         this.orderGateway.emitStatusChange(restoredOrder);
 
-        return restoredOrder;
+        return { ...restoredOrder, timeline: buildOrderTimeline(restoredOrder) };
     }
 }
