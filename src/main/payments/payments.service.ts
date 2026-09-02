@@ -655,7 +655,11 @@ export class PaymentService {
             where: {
                 sellerId: userID,
                 status: {
-                    in: [OrderStatus.IN_PROGRESS, OrderStatus.PROOF_SUBMITTED, OrderStatus.RESUBMIT],
+                    in: [
+                        OrderStatus.IN_PROGRESS,
+                        OrderStatus.PROOF_SUBMITTED,
+                        OrderStatus.RESUBMIT,
+                    ],
                 },
             },
             _sum: { seller_amount: true },
@@ -1832,7 +1836,11 @@ export class PaymentService {
             where: {
                 sellerId: userId,
                 status: {
-                    in: [OrderStatus.IN_PROGRESS, OrderStatus.PROOF_SUBMITTED, OrderStatus.RESUBMIT],
+                    in: [
+                        OrderStatus.IN_PROGRESS,
+                        OrderStatus.PROOF_SUBMITTED,
+                        OrderStatus.RESUBMIT,
+                    ],
                 },
             },
             _sum: { seller_amount: true },

@@ -43,6 +43,11 @@ model Order {
   isCancalProofSubmitted Boolean  @default(false)
   proofRejectReason      String?  // Buyer's reason when rejecting submitted proof
 
+  //                   Cancellation Request (buyer requests cancel while order is in progress)
+
+  isCancelRequested Boolean   @default(false)
+  cancelRequestedAt DateTime?
+
   //                   Relations
   buyer          User            @relation("OrderBuyer", fields: [buyerId], references: [id], onDelete: Cascade)
   seller         User            @relation("OrderSeller", fields: [sellerId], references: [id], onDelete: Cascade)

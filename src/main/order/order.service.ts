@@ -458,6 +458,16 @@ export class OrdersService {
                 }
 
                 if (isBuyer) {
+                    // Mark the order as having a pending cancellation request so the
+                    // seller is blocked from uploading proof until it's resolved
+                    await this.prisma.order.update({
+                        where: { id: order.id },
+                        data: {
+                            isCancelRequested: true,
+                            cancelRequestedAt: new Date(),
+                        },
+                    });
+
                     // Send email notification to seller about cancel request
                     try {
                         await this.mail.sendEmail(
@@ -949,6 +959,13 @@ export class OrdersService {
             throw new BadRequestException("Proof URLs are required");
         }
 
+        // ---------------Block proof upload if buyer has requested cancellation-------------------------
+        if (order.isCancelRequested) {
+            throw new BadRequestException(
+                "The buyer has requested to cancel this order. You cannot upload proof until the cancellation request is resolved.",
+            );
+        }
+
         const updated = await this.prisma.order.update({
             where: { id: orderId },
             data: {
@@ -1208,7 +1225,11 @@ export class OrdersService {
             where: {
                 sellerId,
                 status: {
-                    in: [OrderStatus.IN_PROGRESS, OrderStatus.PROOF_SUBMITTED, OrderStatus.RESUBMIT],
+                    in: [
+                        OrderStatus.IN_PROGRESS,
+                        OrderStatus.PROOF_SUBMITTED,
+                        OrderStatus.RESUBMIT,
+                    ],
                 },
             },
             _sum: { seller_amount: true },
