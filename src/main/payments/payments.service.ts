@@ -1078,6 +1078,16 @@ export class PaymentService {
         if (order.status == OrderStatus.RELEASED)
             throw new HttpException("Order already released", 404);
 
+        const openDispute = await this.prisma.dispute.findFirst({
+            where: { orderId: order.id, status: "UNDER_REVIEW" },
+            select: { id: true },
+        });
+        if (openDispute) {
+            throw new BadRequestException(
+                "This order has a dispute under review. Funds are locked until the dispute is resolved.",
+            );
+        }
+
         const setting = await this.prisma.setting.findUnique({
             where: { id: "platform_settings" },
         });

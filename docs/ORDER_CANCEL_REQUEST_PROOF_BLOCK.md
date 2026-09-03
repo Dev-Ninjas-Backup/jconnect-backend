@@ -117,23 +117,49 @@ This is surfaced to the client by `POST /orders/ProofUpload`
 | `POST /orders/ProofUpload?orderId=...` | Seller uploads proof while `isCancelRequested = true` | `400 Bad Request` — proof rejected, order untouched |
 | `POST /orders/ProofUpload?orderId=...` | Seller uploads proof while `isCancelRequested = false` | Proceeds as before (`status → PROOF_SUBMITTED`, etc.) |
 
-## Known limitation / open follow-up
+## Seller resolves the cancellation request
 
-There is currently **no way to clear `isCancelRequested`** once it's set. If the seller
-does not want to cancel and wishes to keep working on the order, they will remain
-permanently blocked from uploading proof, because no "seller declines the cancellation
-request" endpoint exists yet.
+The seller has two ways to resolve a pending `isCancelRequested = true` request:
 
-If needed, a follow-up feature would add:
+- **Accept** — call the existing `PATCH /orders/:id/status?status=CANCELLED`. This runs
+  the normal seller-cancel flow (Stripe payment intent cancelled, order → `CANCELLED`,
+  refund per the existing rules).
+- **Decline** — call `PATCH /orders/:id/cancel-request/decline` (seller only). This
+  clears `isCancelRequested`/`cancelRequestedAt` and leaves the order's `status`
+  untouched (`IN_PROGRESS`/`PROOF_SUBMITTED`/`RESUBMIT`), so proof upload unblocks
+  again. The buyer is emailed, push-notified, and gets a
+  `order:cancel_request_declined` socket event. Neither path auto-refunds the buyer —
+  a refund only happens via the accept/cancel path above.
 
-- An endpoint (e.g. `PATCH /orders/:id/cancel-request` or similar) for the seller to
-  either accept the cancellation (→ existing seller-cancel flow, sets `CANCELLED`) or
-  reject it (→ clears `isCancelRequested`/`cancelRequestedAt`, allowing proof upload
-  again), modeled on the existing proof-rejection flow
-  (`updateCancalProofSubmitted` in `order.service.ts`).
+Implemented in `OrdersService.declineCancelRequest()` (`src/main/order/order.service.ts`),
+exposed via `OrdersController.declineCancelRequest()`
+(`src/main/order/order.controller.ts`).
+
+## "Report an Issue" also locks the order
+
+A buyer/seller can file a `Dispute` on an order (`POST /disputes`, the `dispotch`
+module) instead of, or after, a cancellation request. While that dispute is
+`UNDER_REVIEW`, the order and its funds are locked the same way a cancellation
+request locks proof upload:
+
+- `submitProof()` — proof upload is rejected with a 400 while an open dispute exists.
+- `OrdersService.updateStatus()` (`status: "RELEASED"`) — the buyer can't confirm
+  delivery / release funds while an open dispute exists.
+- `PaymentsService.approvePayment()` — the buyer/admin release-funds endpoint is
+  blocked the same way.
+
+The lock lifts automatically once an admin resolves the dispute via
+`PATCH /disputes/:id` with `status: RESOLVED` or `status: REJECTED` — the check
+(`OrdersService.hasOpenDispute()`) only looks for `UNDER_REVIEW` disputes.
 
 ## Related code
 
-- `src/main/order/order.controller.ts` — `UploadProofFile()`, `updateStatus()`
-- `src/main/order/order.service.ts` — `updateStatus()`, `submitProof()`
+- `src/main/order/order.controller.ts` — `UploadProofFile()`, `updateStatus()`,
+  `declineCancelRequest()`
+- `src/main/order/order.service.ts` — `updateStatus()`, `submitProof()`,
+  `declineCancelRequest()`, `hasOpenDispute()`
+- `src/main/order/order.gateway.ts` — `emitCancelRequestDeclined()`
+- `src/main/payments/payments.service.ts` — `approvePayment()`
+- `src/main/dispotch/` — `Dispute` create/update (`dispotch.service.ts`)
 - `prisma/schema/order.prisma` — `Order` model
+- `prisma/schema/Dispotch.prisma` — `Dispute` model
