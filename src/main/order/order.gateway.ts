@@ -42,6 +42,7 @@ export enum OrderEvents {
     CANCELLED = "order:cancelled",
     DELIVERY_DATE_UPDATED = "order:delivery_date_updated",
     PROOF_CANCELLED = "order:proof_cancelled",
+    CANCEL_REQUEST_DECLINED = "order:cancel_request_declined",
     ORDER_DELETED = "order:deleted",
     SERVICE_REQUEST_UPDATED = "order:service_request_updated",
 
@@ -203,6 +204,10 @@ export class OrderGateway implements OnGatewayInit, OnGatewayConnection, OnGatew
 
     emitProofCancelled(order: any) {
         this.push([order.buyerId, order.sellerId], OrderEvents.PROOF_CANCELLED, order);
+    }
+
+    emitCancelRequestDeclined(order: any) {
+        this.push([order.buyerId, order.sellerId], OrderEvents.CANCEL_REQUEST_DECLINED, order);
     }
 
     emitOrderDeleted(order: any) {
