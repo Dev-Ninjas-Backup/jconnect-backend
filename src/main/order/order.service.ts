@@ -98,6 +98,15 @@ export class OrdersService {
         private readonly stripe: Stripe,
     ) {}
 
+    /** True while the order has a Dispute ("Report an Issue") under review — order/funds stay locked. */
+    async hasOpenDispute(orderId: string): Promise<boolean> {
+        const dispute = await this.prisma.dispute.findFirst({
+            where: { orderId, status: "UNDER_REVIEW" },
+            select: { id: true },
+        });
+        return !!dispute;
+    }
+
     /** Sync chat card status when order is cancelled (Paid → Cancelled) + live socket. */
     private async markLinkedServiceRequestCancelled(order: {
         id: string;
@@ -509,6 +518,11 @@ export class OrdersService {
         if (status === OrderStatus.RELEASED) {
             if (order.buyerId !== user.userId)
                 throw new ForbiddenException("Only buyer can confirm delivery");
+            if (await this.hasOpenDispute(order.id)) {
+                throw new BadRequestException(
+                    "This order has a dispute under review. Funds are locked until the dispute is resolved.",
+                );
+            }
         }
 
         if (status === OrderStatus.RESUBMIT) {
@@ -857,6 +871,81 @@ export class OrdersService {
         };
     }
 
+    // ----------------- SELLER DECLINES A CANCELLATION REQUEST -----------------
+    // Clears isCancelRequested/cancelRequestedAt so the order stays in its
+    // current status (IN_PROGRESS/PROOF_SUBMITTED/RESUBMIT) and proof upload
+    // unblocks again. To accept the cancellation instead, the seller uses the
+    // existing PATCH /orders/:id/status?status=CANCELLED flow.
+    @HandleError("Failed to decline cancellation request")
+    async declineCancelRequest(orderId: string, user: any) {
+        const order = await this.prisma.order.findUnique({
+            where: { id: orderId },
+            include: { buyer: true, seller: true, service: true },
+        });
+        if (!order) throw new NotFoundException("Order not found");
+
+        if (order.sellerId !== user.userId) {
+            throw new ForbiddenException("Only the seller can decline a cancellation request");
+        }
+
+        if (!order.isCancelRequested) {
+            throw new BadRequestException(
+                "There is no pending cancellation request for this order",
+            );
+        }
+
+        const updated = await this.prisma.order.update({
+            where: { id: order.id },
+            data: {
+                isCancelRequested: false,
+                cancelRequestedAt: null,
+            },
+        });
+
+        try {
+            await this.mail.sendEmail(
+                order.buyer.email,
+                "DaConnect - Cancellation Request Declined for Order " + order.orderCode,
+                `
+                <p>Hello ${order.buyer.full_name || "Buyer"},</p>
+                <p>The seller has declined your cancellation request for order <strong>${order.orderCode}</strong> for the service <strong>${order.service.serviceName}</strong>. The order remains in progress.</p>
+                <p>If you still have concerns, you can report an issue and our team will review it.</p>
+                <p>Thank you,<br/>DaConnect Team</p>
+                `,
+            );
+        } catch (error) {
+            console.error("Failed to send cancellation decline email:", error);
+        }
+
+        try {
+            await this.firebaseNotificationService.sendToUser(
+                order.buyerId,
+                {
+                    title: "Cancellation Request Declined",
+                    body: `@${order.seller?.username ?? "The seller"} declined your cancellation request for order ${order.orderCode}. The order remains in progress.`,
+                    type: NotificationType.ORDER_UPDATE,
+                    data: {
+                        orderId: order.id,
+                        orderCode: order.orderCode,
+                        status: updated.status,
+                        action: "CANCEL_REQUEST_DECLINED",
+                        timestamp: new Date().toISOString(),
+                    },
+                },
+                true,
+            );
+        } catch (error) {
+            console.error("Failed to send cancellation decline notification:", error);
+        }
+
+        this.orderGateway.emitCancelRequestDeclined(updated);
+        return {
+            ...updated,
+            timeline: buildOrderTimeline(updated),
+            message: "Cancellation request declined. The order remains in progress.",
+        };
+    }
+
     // -----------------------DELETE ORDER -------------------------
     async deleteOrder(orderId: string, user: any) {
         // 1) Load order
@@ -963,6 +1052,13 @@ export class OrdersService {
         if (order.isCancelRequested) {
             throw new BadRequestException(
                 "The buyer has requested to cancel this order. You cannot upload proof until the cancellation request is resolved.",
+            );
+        }
+
+        // ---------------Block proof upload while a dispute is under review-------------------------
+        if (await this.hasOpenDispute(order.id)) {
+            throw new BadRequestException(
+                "This order has a dispute under review. You cannot upload proof until the dispute is resolved.",
             );
         }
 

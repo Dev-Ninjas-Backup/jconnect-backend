@@ -237,4 +237,23 @@ export class OrdersController {
         const boolValue = isCancalProofSubmitted === "true";
         return this.ordersService.updateCancalProofSubmitted(orderId, boolValue, body?.reason);
     }
+
+    // ------------- Seller declines a pending cancellation request -------------
+    @Patch(":id/cancel-request/decline")
+    @ApiBearerAuth()
+    @ValidateUser()
+    @ApiOperation({
+        summary: "Seller declines a buyer's pending cancellation request (Seller only)",
+        description:
+            "Clears isCancelRequested/cancelRequestedAt so the order stays in its current " +
+            "status and proof upload unblocks again. To accept the cancellation instead, use " +
+            "PATCH /orders/:id/status?status=CANCELLED.",
+    })
+    @ApiParam({
+        name: "id",
+        description: "ID of the order with a pending cancellation request",
+    })
+    async declineCancelRequest(@Param("id") id: string, @GetUser() user: any) {
+        return this.ordersService.declineCancelRequest(id, user);
+    }
 }
