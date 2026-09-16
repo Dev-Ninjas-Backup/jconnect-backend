@@ -17,6 +17,9 @@ import { PrismaService } from "src/lib/prisma/prisma.service";
 import Stripe from "stripe";
 import { OrderGateway } from "./order.gateway";
 
+// Buyer proof-review window — after this, escrow funds are auto-released to the seller.
+const PROOF_REVIEW_WINDOW_MS = 24 * 60 * 60 * 1000;
+
 export function buildOrderTimeline(order: {
     createdAt: Date;
     inProgressAt?: Date | null;
@@ -44,19 +47,20 @@ export function buildOrderTimeline(order: {
     ].filter((step) => step.at);
 }
 
-function statusTimestampData(status: OrderStatus): Record<string, Date> {
+function statusTimestampData(status: OrderStatus): Record<string, Date | null> {
     const now = new Date();
     switch (status) {
         case OrderStatus.IN_PROGRESS:
-            return { inProgressAt: now };
+            // Seller accepted — the 24h acceptance deadline no longer applies.
+            return { inProgressAt: now, acceptDeadline: null };
         case OrderStatus.PROOF_SUBMITTED:
             return { proofSubmittedAt: now };
         case OrderStatus.RESUBMIT:
             return { resubmitAt: now };
         case OrderStatus.RELEASED:
-            return { releasedAt: now };
+            return { releasedAt: now, proofReviewDeadline: null };
         case OrderStatus.CANCELLED:
-            return { cancelledAt: now };
+            return { cancelledAt: now, acceptDeadline: null, proofReviewDeadline: null };
         default:
             return {};
     }
@@ -181,6 +185,104 @@ export class OrdersService {
         } catch (error) {
             console.error(`Failed to send order cancel notification: ${error.message}`);
         }
+    }
+
+    /**
+     * Scheduler-triggered (OrderSchedulerService): seller didn't move the order
+     * to IN_PROGRESS before its 24h acceptDeadline. Void the held PaymentIntent,
+     * cancel the order, and notify both parties. Mirrors the manual
+     * seller-cancels-a-PENDING-order path in updateStatus().
+     */
+    async autoCancelUnacceptedOrder(orderId: string) {
+        const order = await this.prisma.order.findUnique({
+            where: { id: orderId },
+            include: { buyer: true, seller: true, service: true },
+        });
+        if (!order || order.status !== OrderStatus.PENDING) return order;
+
+        if (order.paymentIntentId) {
+            try {
+                const intent = await this.stripe.paymentIntents.retrieve(order.paymentIntentId);
+                if (intent.status === "requires_capture") {
+                    await this.stripe.paymentIntents.cancel(order.paymentIntentId);
+                }
+            } catch (error) {
+                console.error(
+                    `Failed to void PaymentIntent for order ${order.id}: ${error.message}`,
+                );
+            }
+        }
+
+        const updated = await this.prisma.order.update({
+            where: { id: order.id },
+            data: {
+                status: OrderStatus.CANCELLED,
+                cancelledAt: new Date(),
+                seller_amount: 0,
+                buyerPay: 0,
+                stripeFee: 0,
+                PlatfromRevinue: 0,
+                platformFee: 0,
+            },
+        });
+        await this.markLinkedServiceRequestCancelled(order);
+
+        const sellerName = order.seller?.username ?? "The seller";
+        try {
+            await Promise.all([
+                this.firebaseNotificationService.sendToUser(
+                    order.buyerId,
+                    {
+                        title: "Order Cancelled — Refund Issued",
+                        body: `@${sellerName} didn't accept order ${order.orderCode} within 24 hours. Your payment has been refunded.`,
+                        type: "ORDER_AUTO_CANCELLED" as any,
+                        data: {
+                            orderId: order.id,
+                            orderCode: order.orderCode,
+                            status: OrderStatus.CANCELLED,
+                            action: "AUTO_CANCEL_UNACCEPTED",
+                            timestamp: new Date().toISOString(),
+                        },
+                    },
+                    true,
+                ),
+                this.firebaseNotificationService.sendToUser(
+                    order.sellerId,
+                    {
+                        title: "Order Expired",
+                        body: `You missed the 24-hour window to accept order ${order.orderCode}. It has been cancelled and refunded to the buyer.`,
+                        type: "ORDER_AUTO_CANCELLED" as any,
+                        data: {
+                            orderId: order.id,
+                            orderCode: order.orderCode,
+                            status: OrderStatus.CANCELLED,
+                            action: "AUTO_CANCEL_UNACCEPTED",
+                            timestamp: new Date().toISOString(),
+                        },
+                    },
+                    true,
+                ),
+            ]);
+        } catch (error) {
+            console.error(`Failed to send auto-cancel notifications: ${error.message}`);
+        }
+
+        try {
+            await this.mail.sendEmail(
+                order.buyer.email,
+                "DaConnect - Order Cancelled & Refunded",
+                `
+                <p>Hello ${order.buyer.full_name || "Buyer"},</p>
+                <p>The seller did not accept your order <strong>${order.orderCode}</strong> for the service <strong>${order.service.serviceName}</strong> within 24 hours, so it has been automatically cancelled and your payment has been refunded.</p>
+                <p>Thank you,<br/>DaConnect Team</p>
+                `,
+            );
+        } catch (error) {
+            console.error("Failed to send auto-cancel email to buyer:", error);
+        }
+
+        this.orderGateway.emitCancelled(updated);
+        return { ...updated, timeline: buildOrderTimeline(updated) };
     }
 
     //----------------------- CREATE ORDER -----------------------
@@ -1062,6 +1164,8 @@ export class OrdersService {
             );
         }
 
+        const proofReviewDeadline = new Date(Date.now() + PROOF_REVIEW_WINDOW_MS);
+
         const updated = await this.prisma.order.update({
             where: { id: orderId },
             data: {
@@ -1070,6 +1174,7 @@ export class OrdersService {
                     push: proofUrls,
                 },
                 proofSubmittedAt: new Date(),
+                proofReviewDeadline,
                 isCancalProofSubmitted: false,
             },
             include: {
@@ -1155,9 +1260,9 @@ export class OrdersService {
                             </div>
 
                             <p style="font-size: 15px; color: #475569; margin: 25px 0;"><strong>What's Next?</strong></p>
-                            <p style="font-size: 15px; color: #475569; margin: 15px 0;">Please review the submitted proof and confirm if everything meets your expectations. Once you're satisfied with the work, you can release the payment to the seller.</p>
-                            
-                            <p style="font-size: 15px; color: #475569; margin: 15px 0;">If you have any concerns about the submitted proof, please contact the seller or reach out to our support team for assistance.</p>
+                            <p style="font-size: 15px; color: #475569; margin: 15px 0;">Please review the submitted proof and confirm if everything meets your expectations. <strong>You have 24 hours to review or dispute this proof</strong> — after that, the payment is automatically released to the seller.</p>
+
+                            <p style="font-size: 15px; color: #475569; margin: 15px 0;">If you have any concerns about the submitted proof, please contact the seller or reach out to our support team for assistance before the 24-hour window closes.</p>
                             
                             <div style="text-align: center; margin: 30px 0;">
                                 <a href="#" class="cta-button">View Order Details</a>
@@ -1186,7 +1291,7 @@ export class OrdersService {
             order.buyerId,
             {
                 title: "Proof uploaded",
-                body: `${updated.seller?.username ?? "Seller"} has submitted proof for order ${order.orderCode}`,
+                body: `${updated.seller?.username ?? "Seller"} has submitted proof for order ${order.orderCode}. You have 24 hours to review or dispute it before funds are automatically released.`,
                 type: NotificationType.UPLOAD_PROOF,
                 data: {
                     // App uses orderId to fetch order details — never put buyerId here
@@ -1196,6 +1301,7 @@ export class OrdersService {
                     buyerId: order.buyerId,
                     sellerId: order.sellerId,
                     status: updated.status,
+                    proofReviewDeadline: proofReviewDeadline.toISOString(),
                     timestamp: new Date().toISOString(),
                 },
             },
@@ -1402,6 +1508,7 @@ export class OrdersService {
                     proofUrl: [],
                     proofRejectReason: trimmedReason,
                     resubmitAt: new Date(),
+                    proofReviewDeadline: null,
                 },
                 include: {
                     service: true,

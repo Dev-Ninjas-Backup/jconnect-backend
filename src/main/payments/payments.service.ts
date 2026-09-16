@@ -20,6 +20,9 @@ import Stripe from "stripe";
 import { ConfirmSetupIntentDto } from "./dto/confirm-setup-intent.dto";
 import { PaginationDto } from "./dto/pagination.dto";
 
+// Seller acceptance window — after this, an unaccepted order is auto-cancelled/refunded.
+const ACCEPT_WINDOW_MS = 24 * 60 * 60 * 1000;
+
 const serviceRequestSocketInclude = {
     service: {
         include: {
@@ -872,6 +875,9 @@ export class PaymentService {
                 amount: service.price,
                 seller_amount: sellerAmount,
                 status: OrderStatus.PENDING,
+                // Seller has 24 hours to accept (move to IN_PROGRESS) before this order is
+                // auto-cancelled and the buyer is refunded — see OrderSchedulerService.
+                acceptDeadline: new Date(Date.now() + ACCEPT_WINDOW_MS),
             },
         });
 
@@ -1296,6 +1302,117 @@ export class PaymentService {
             stripefee: balanceTransaction.fee,
             stripeneet: balanceTransaction.net,
         };
+    }
+
+    // ------------------ Scheduler: auto-release escrow after the buyer's 24h proof-review window expires ------------------
+    // Same capture + payout math as approvePayment(), triggered by OrderSchedulerService instead of the buyer.
+    @HandleError("autoReleaseEscrow error")
+    async autoReleaseEscrow(orderId: string) {
+        const order = await this.prisma.order.findUnique({
+            where: { id: orderId },
+            include: {
+                buyer: { omit: { password: true } },
+                seller: { omit: { password: true } },
+                service: true,
+            },
+        });
+        if (!order) throw new NotFoundException("Order not found");
+        if (order.status !== OrderStatus.PROOF_SUBMITTED || order.isReleased) return order;
+
+        const paymentIntentId = order.paymentIntentId;
+        if (!paymentIntentId) {
+            this.logger.warn(`Order ${order.id} has no paymentIntentId; skipping auto-release`);
+            return order;
+        }
+
+        const setting = await this.prisma.setting.findUnique({
+            where: { id: "platform_settings" },
+        });
+        if (!setting?.platformFee_percents)
+            throw new BadRequestException("Platform fee is not set in settings");
+
+        const intent = await this.stripe.paymentIntents.retrieve(paymentIntentId);
+        let capturedIntent: Stripe.PaymentIntent = intent;
+        if (intent.status !== "succeeded" && intent.capture_method === "manual") {
+            capturedIntent = (await this.stripe.paymentIntents.capture(
+                paymentIntentId,
+            )) as Stripe.PaymentIntent;
+            this.logger.log(`Auto-release: captured PaymentIntent ${paymentIntentId}`);
+        }
+
+        const chargesList = await this.stripe.charges.list({
+            payment_intent: capturedIntent.id,
+        });
+        const charge = chargesList.data[0];
+        if (!charge) {
+            this.logger.warn(
+                `No charge found for PaymentIntent ${paymentIntentId}; skipping auto-release`,
+            );
+            return order;
+        }
+
+        const balanceTransaction = await this.stripe.balanceTransactions.retrieve(
+            charge.balance_transaction as string,
+        );
+        const PlatfromRevinue = balanceTransaction.net - order.seller_amount;
+
+        const updated = await this.prisma.order.update({
+            where: { id: order.id },
+            data: {
+                status: OrderStatus.RELEASED,
+                isReleased: true,
+                releasedAt: new Date(),
+                PlatfromRevinue,
+                buyerPay: balanceTransaction.net,
+                platformFee: (order.amount * setting.platformFee_percents) / 100,
+                stripeFee: Number(balanceTransaction.fee),
+                platformFee_percents: setting.platformFee_percents,
+            },
+        });
+
+        this.orderGateway.emitReleased(updated);
+
+        const priceStr = `$${(order.amount / 100).toFixed(2)}`;
+        try {
+            await Promise.all([
+                this.firebaseNotificationService.sendToUser(
+                    order.buyerId,
+                    {
+                        title: "Funds Released",
+                        body: `You didn't review in time, so ${priceStr} for order ${order.orderCode} was automatically released to @${order.seller?.username ?? "the seller"}.`,
+                        type: NotificationType.ORDER_UPDATE,
+                        data: {
+                            orderId: order.id,
+                            orderCode: order.orderCode,
+                            status: OrderStatus.RELEASED,
+                            action: "AUTO_RELEASE",
+                            timestamp: new Date().toISOString(),
+                        },
+                    },
+                    true,
+                ),
+                this.firebaseNotificationService.sendToUser(
+                    order.sellerId,
+                    {
+                        title: "Payment Released",
+                        body: `Order ${order.orderCode} wasn't reviewed within 24 hours, so payment has been automatically released to your balance.`,
+                        type: NotificationType.PAYMENT_RECEIVED,
+                        data: {
+                            orderId: order.id,
+                            orderCode: order.orderCode,
+                            amount: order.amount.toString(),
+                            action: "AUTO_RELEASE",
+                            timestamp: new Date().toISOString(),
+                        },
+                    },
+                    true,
+                ),
+            ]);
+        } catch (error) {
+            this.logger.error(`Failed to send auto-release notifications: ${error.message}`);
+        }
+
+        return updated;
     }
 
     @HandleError("refundPayment error")

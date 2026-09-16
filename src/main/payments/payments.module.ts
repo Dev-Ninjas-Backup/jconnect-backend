@@ -10,5 +10,6 @@ import { PaymentService } from "./payments.service";
     imports: [StripeModule, NotificationModule, OrdersModule, PrivateMessageModule],
     controllers: [PaymentController],
     providers: [PaymentService],
+    exports: [PaymentService],
 })
 export class PaymentsModule {}

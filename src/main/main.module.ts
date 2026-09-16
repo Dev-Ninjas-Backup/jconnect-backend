@@ -5,6 +5,7 @@ import { AuthModule } from "./auth/auth.module";
 import { CustomServiceRequestModule } from "./custom-service-request/custom-service-request.module";
 import { DisputeModule } from "./dispotch/dispotch.module";
 import { OrdersModule } from "./order/order.module";
+import { OrderSchedulerModule } from "./order-scheduler/order-scheduler.module";
 import { PaymentsModule } from "./payments/payments.module";
 import { ProfileModule } from "./profile/profile.module";
 import { RepostListingModule } from "./repost-listing/repost-listing.module";
@@ -34,6 +35,7 @@ import { UsersModule } from "./users/users.module";
         SharedModule,
         PaymentsModule,
         OrdersModule,
+        OrderSchedulerModule,
         AdminDashboardStatsModule,
         DisputeModule,
         SettingsModule,

@@ -35,6 +35,13 @@ model Order {
   isReleased           Boolean     @default(false)
   releasedAt           DateTime?
 
+  //                   Auto-expiry deadlines (mirrors RepostOrder's countdownEndsAt/reviewWindowEndsAt)
+
+  // Seller must move the order to IN_PROGRESS before this, else it's auto-cancelled and refunded.
+  acceptDeadline      DateTime?
+  // Buyer must review submitted proof before this, else funds are auto-released to the seller.
+  proofReviewDeadline DateTime?
+
   //                   Proof
 
   proofUrl               String[]
@@ -53,4 +60,7 @@ model Order {
   seller         User            @relation("OrderSeller", fields: [sellerId], references: [id], onDelete: Cascade)
   service        Service         @relation(fields: [serviceId], references: [id], onDelete: Cascade)
   serviceRequest ServiceRequest? @relation(fields: [serviceRequestId], references: [id], onDelete: SetNull)
+
+  @@index([status, acceptDeadline])
+  @@index([status, proofReviewDeadline])
 }

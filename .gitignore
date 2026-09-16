@@ -106,3 +106,4 @@ backups/
 logs/
 prisma/generator/
 # prisma/migrations/
+.vscode/
