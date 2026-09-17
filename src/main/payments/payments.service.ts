@@ -820,6 +820,10 @@ export class PaymentService {
             throw new BadRequestException("User does not have a Stripe Customer ID");
         if (!service) throw new NotFoundException("Service not found");
 
+        // Buyer's own "I want this done by" date (ServiceRequest.promotionDate), when given,
+        // drives the seller-acceptance countdown below instead of the flat 24h fallback.
+        let promotionDate: Date | null = null;
+
         if (serviceRequestId) {
             const serviceRequest = await this.prisma.serviceRequest.findUnique({
                 where: { id: serviceRequestId },
@@ -833,6 +837,7 @@ export class PaymentService {
             if (serviceRequest.serviceId && serviceRequest.serviceId !== serviceId) {
                 throw new BadRequestException("Service request does not match this service");
             }
+            promotionDate = serviceRequest.promotionDate ?? null;
         }
 
         const setting = await this.prisma.setting.findUnique({
@@ -861,6 +866,18 @@ export class PaymentService {
         });
         const priceInCents = Math.round(service.price);
         const sellerAmount = priceInCents - (priceInCents * setting.platformFee_percents) / 100;
+
+        // Seller must accept (move to IN_PROGRESS) before this order is auto-cancelled and the
+        // buyer is refunded — see OrderSchedulerService. Reflect the buyer's own chosen
+        // promotion/completion date when there is one (e.g. buyer wants it done by 8:26pm —
+        // the countdown should run out at 8:26pm, not always 24h later); otherwise fall back
+        // to a flat 24h window.
+        const now = Date.now();
+        const acceptDeadline =
+            promotionDate && promotionDate.getTime() > now
+                ? promotionDate
+                : new Date(now + ACCEPT_WINDOW_MS);
+
         const order = await this.prisma.order.create({
             data: {
                 orderCode: `ORD-${Date.now()}`,
@@ -875,9 +892,7 @@ export class PaymentService {
                 amount: service.price,
                 seller_amount: sellerAmount,
                 status: OrderStatus.PENDING,
-                // Seller has 24 hours to accept (move to IN_PROGRESS) before this order is
-                // auto-cancelled and the buyer is refunded — see OrderSchedulerService.
-                acceptDeadline: new Date(Date.now() + ACCEPT_WINDOW_MS),
+                acceptDeadline,
             },
         });
 

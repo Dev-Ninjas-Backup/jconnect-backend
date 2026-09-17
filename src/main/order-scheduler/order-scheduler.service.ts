@@ -15,7 +15,9 @@ export class OrderSchedulerService {
         private paymentService: PaymentService,
     ) {}
 
-    // ─────────── Auto-cancel + refund orders the seller never accepted within 24h ───────────
+    // ─────────── Auto-cancel + refund orders the seller never accepted in time ───────────
+    // acceptDeadline is the buyer's own promotion/completion date when one was given
+    // (e.g. "done by 8:26pm"), else a flat 24h window — see createOrderWithPaymentMethod().
     @Cron(CronExpression.EVERY_MINUTE)
     async handleAcceptanceExpiry() {
         const now = new Date();
@@ -33,7 +35,34 @@ export class OrderSchedulerService {
             try {
                 await this.ordersService.autoCancelUnacceptedOrder(order.id);
                 this.logger.log(
-                    `Auto-cancelled unaccepted order ${order.orderCode} (${order.id}) — seller missed the 24h acceptance window`,
+                    `Auto-cancelled unaccepted order ${order.orderCode} (${order.id}) — seller missed the acceptance window`,
+                );
+            } catch (err: any) {
+                this.logger.error(
+                    `Auto-cancel failed for order ${order.orderCode} (${order.id}): ${err.message}`,
+                );
+            }
+        }
+    }
+
+    // ─────────── Auto-cancel + refund orders the seller accepted but never submitted proof for within 24h ───────────
+    @Cron(CronExpression.EVERY_MINUTE)
+    async handleProofSubmissionExpiry() {
+        const now = new Date();
+
+        const expired = await this.prisma.order.findMany({
+            where: {
+                status: OrderStatus.IN_PROGRESS,
+                proofSubmitDeadline: { lte: now },
+            },
+            select: { id: true, orderCode: true },
+        });
+
+        for (const order of expired) {
+            try {
+                await this.ordersService.autoCancelUnsubmittedOrder(order.id);
+                this.logger.log(
+                    `Auto-cancelled order ${order.orderCode} (${order.id}) — seller missed the 24h proof-submission window`,
                 );
             } catch (err: any) {
                 this.logger.error(

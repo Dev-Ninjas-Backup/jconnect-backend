@@ -1,8 +1,8 @@
-# Order Escrow Auto-Expiry (24h Windows) — App Developer Guide
+# Order Escrow Auto-Expiry — App Developer Guide
 
-Reference for the two new automatic deadlines added to the standard `Order`
-escrow flow (service orders under `/orders`, **not** the repost marketplace,
-which already had this behavior). Covers the new `Order` fields, the
+Reference for the three automatic deadlines on the standard `Order` escrow
+flow (service orders under `/orders`, **not** the repost marketplace, which
+already had similar behavior). Covers the `Order` fields, the
 notifications/socket events they trigger, and how the app should surface
 countdowns and terminal states.
 
@@ -11,7 +11,7 @@ Related backend docs: [`ORDER_CANCEL_REQUEST_PROOF_BLOCK.md`](./ORDER_CANCEL_REQ
 
 ## 1. What changed
 
-Two problems reported by the client are now fixed:
+Three problems reported by the client are now fixed:
 
 1. A buyer who never opens the app after a seller submits proof could leave an
    order stuck in `PROOF_SUBMITTED` forever, with the seller's payout never
@@ -19,11 +19,25 @@ Two problems reported by the client are now fixed:
    after that, escrow is captured and released to the seller automatically.
 2. A seller who never responds to a paid order could leave it stuck in
    `PENDING` forever, with the buyer's money held indefinitely. **Fix:** the
-   seller now has a fixed 24-hour window to accept (move the order to
-   `IN_PROGRESS`); after that, the order is auto-cancelled and the buyer's
-   payment is voided/refunded automatically.
+   seller now has a window to accept (move the order to `IN_PROGRESS`); after
+   that, the order is auto-cancelled and the buyer's payment is
+   voided/refunded automatically.
+3. **(Follow-up fix)** That acceptance countdown originally always used a flat
+   24 hours, which didn't match what the buyer actually asked for. Client
+   feedback (Sep 16):
+   > "The countdown clock should reflect the correct timeline. Example: I put
+   > in that I wanted the service done by 8:26pm so the countdown clock
+   > should have a 12 hour window and after accepting the seller should have
+   > 24 hours to submit proof."
 
-Both windows are enforced by a new minute-by-minute cron job — no client
+   **Fix:** the seller-acceptance countdown now uses the buyer's own chosen
+   completion date (`ServiceRequest.promotionDate`) when one was given — e.g.
+   an order placed at 8:26am for a promotion the buyer wants live by 8:26pm
+   now shows a 12-hour countdown, not 24. Separately, a **new** 24-hour timer
+   now starts the moment the seller accepts, giving them 24 hours to submit
+   proof before the order is auto-cancelled and refunded.
+
+All three windows are enforced by minute-by-minute cron jobs — no client
 action is required to trigger them. The app's job is to **display the
 countdown** and **react to the resulting notifications/socket events**.
 
@@ -35,27 +49,46 @@ every other `Order` column.
 
 | Field | Type | Set when | Cleared when |
 |---|---|---|---|
-| `acceptDeadline` | `ISO date \| null` | Order created (buyer pays) — `createdAt + 24h` | Seller accepts (`status → IN_PROGRESS`), or order is cancelled |
+| `acceptDeadline` | `ISO date \| null` | Order created (buyer pays) — see §3 for how it's computed | Seller accepts (`status → IN_PROGRESS`), or order is cancelled |
+| `proofSubmitDeadline` | `ISO date \| null` | Seller accepts — `inProgressAt + 24h` | Seller submits proof, or order is cancelled |
 | `proofReviewDeadline` | `ISO date \| null` | Seller submits proof — `proofSubmittedAt + 24h` | Buyer reviews (proof accepted/rejected → `RELEASED`/`RESUBMIT`), or order is cancelled |
 
-Both are `null` outside the window they apply to — e.g. `acceptDeadline` is
+Each is `null` outside the phase it applies to — e.g. `acceptDeadline` is
 always `null` once `status` leaves `PENDING`. Treat `null` as "no active
-countdown for this timer," not as an error.
+countdown for this timer," not as an error. **Exactly one** of the three is
+ever non-null at a time for an order still in flight (`PENDING` →
+`IN_PROGRESS` → `PROOF_SUBMITTED`).
 
 > This mirrors the repost marketplace's `RepostOrder.countdownEndsAt` /
 > `reviewWindowEndsAt` — if you've already built countdown UI for repost
-> orders, the same component works here with a 24h window instead of a
-> timeframe-based one / a 1h review window.
+> orders, the same component works here.
 
 ## 3. Timer 1 — Seller acceptance (`acceptDeadline`)
 
+`acceptDeadline` is computed **once**, at order creation, and does not
+change afterward:
+
 ```
-Buyer pays → status = PENDING, acceptDeadline = now + 24h
+serviceRequest.promotionDate set AND in the future?
+   ├── yes → acceptDeadline = promotionDate   (buyer's own "done by" time)
+   └── no  → acceptDeadline = createdAt + 24h (flat fallback)
+```
+
+**Example (from the client's report):** order placed at 8:26am, buyer's
+`promotionDate` (entered when creating the service request — "I want this
+done by 8:26pm") is 8:26pm the same day → `acceptDeadline` is 8:26pm, a
+12-hour window, not the old flat 24h.
+
+Orders with no linked `ServiceRequest`, or one with no `promotionDate` set,
+still get the flat 24h fallback — this is unchanged from before.
+
+```
+Buyer pays → status = PENDING, acceptDeadline = (per above)
    │
-   ├── Seller calls PATCH /orders/:id/status?status=IN_PROGRESS within 24h
-   │      → acceptDeadline cleared (null), order proceeds normally
+   ├── Seller calls PATCH /orders/:id/status?status=IN_PROGRESS before acceptDeadline
+   │      → acceptDeadline cleared (null), proofSubmitDeadline = now + 24h (§4)
    │
-   └── 24h pass with status still PENDING
+   └── acceptDeadline passes with status still PENDING
           → cron auto-cancels: PaymentIntent voided, status = CANCELLED,
             cancelledAt = now, buyer refunded, both parties notified
 ```
@@ -64,14 +97,51 @@ Buyer pays → status = PENDING, acceptDeadline = now + 24h
 
 - While `status === "PENDING"` and `acceptDeadline` is set, show a countdown
   ("Waiting for seller to accept — expires in Xh Ym") on the buyer's order
-  screen. The seller's "New Order" screen should show the same countdown as
-  urgency to accept.
+  screen, and the same countdown on the seller's "New Order" screen as
+  urgency to accept. **Compute the countdown from `acceptDeadline` directly**
+  — don't assume a fixed duration client-side, since it can now be shorter
+  or longer than 24h depending on the buyer's `promotionDate`.
 - Once the countdown hits zero, don't rely on the client clock alone to flip
-  UI state — re-fetch the order or wait for the socket event (§5), since the
+  UI state — re-fetch the order or wait for the socket event (§6), since the
   cron runs once a minute and there can be up to ~60s of lag between the
   deadline passing and the order actually flipping to `CANCELLED`.
 
-## 4. Timer 2 — Buyer proof review (`proofReviewDeadline`)
+## 4. Timer 2 — Seller proof submission (`proofSubmitDeadline`) — new
+
+```
+Seller accepts → status = IN_PROGRESS, proofSubmitDeadline = now + 24h
+   │
+   ├── Seller submits proof within 24h (POST /orders/ProofUpload)
+   │      → status = PROOF_SUBMITTED, proofSubmitDeadline cleared,
+   │        proofReviewDeadline = now + 24h starts (§5)
+   │
+   └── 24h pass with status still IN_PROGRESS
+          → cron auto-cancels: PaymentIntent voided, status = CANCELLED,
+            cancelledAt = now, buyer refunded, both parties notified
+```
+
+This is a **flat 24h window regardless of `promotionDate`** — once the
+seller has accepted, they get a fixed day to deliver proof no matter how
+close (or far) the buyer's original completion date was.
+
+**Guarded exception:** the cron **skips** auto-cancel (order stays
+`IN_PROGRESS`, nothing happens) if the order has an open (`UNDER_REVIEW`)
+`Dispute` filed against it — same guard used everywhere else disputes lock
+an order (see `ORDER_CANCELLATION_DISPUTE_APP_GUIDE.md` §6). It is **not**
+guarded by `isCancelRequested` — if the buyer has an open cancellation
+request, auto-cancelling and refunding them is exactly what they asked for,
+so it's allowed to proceed.
+
+**UI guidance:**
+
+- While `status === "IN_PROGRESS"` and `proofSubmitDeadline` is set, show the
+  seller a countdown: "Submit proof within Xh Ym or this order is
+  auto-cancelled and refunded to the buyer." The buyer's order screen can
+  show the same countdown as "Seller has until Xh Ym to deliver."
+- If an open dispute exists, don't show this as "ticking down to
+  cancellation" — the order is actually locked pending admin review.
+
+## 5. Timer 3 — Buyer proof review (`proofReviewDeadline`)
 
 ```
 Seller submits proof → status = PROOF_SUBMITTED,
@@ -83,7 +153,9 @@ Seller submits proof → status = PROOF_SUBMITTED,
    │
    ├── Buyer rejects proof within 24h (PATCH .../cancel-proof)
    │      → status = RESUBMIT, proofReviewDeadline cleared
-   │        (a fresh 24h deadline is set the next time proof is submitted)
+   │        (a fresh 24h deadline is set the next time proof is submitted —
+   │        note: re-submission after a rejection is not subject to a new
+   │        proofSubmitDeadline, only the original accept→submit window was)
    │
    └── 24h pass with status still PROOF_SUBMITTED
           → cron auto-releases: PaymentIntent captured, status = RELEASED,
@@ -108,21 +180,21 @@ released" until it actually observes `status === "RELEASED"`.
 - While `status === "PROOF_SUBMITTED"` and `proofReviewDeadline` is set, show
   the buyer a countdown: "Review within Xh Ym or funds are automatically
   released to the seller." This is the same banner the proof-submitted push
-  notification is now paired with (§5).
+  notification is paired with (§6.1).
 - If `isCancelRequested` or an open dispute exists, don't show the release
   countdown as "ticking down to release" — the funds are actually locked.
   Prefer messaging like "Under review — release paused" (reuses the existing
   dispute/cancel-request banners from `ORDER_CANCELLATION_DISPUTE_APP_GUIDE.md`
   §4).
 
-## 5. Notification changes
+## 6. Notification changes
 
-### 5.1 Existing "proof submitted" notification — body text updated
+### 6.1 Existing "proof submitted" notification — body text updated
 
 No new notification type; the existing `UPLOAD_PROOF` push (and matching
-email) sent to the buyer when the seller submits proof now explicitly states
-the 24h deadline, and the push `data` payload carries the deadline so the app
-can render a countdown without an extra fetch:
+email) sent to the buyer when the seller submits proof states the 24h
+deadline, and the push `data` payload carries the deadline so the app can
+render a countdown without an extra fetch:
 
 ```json
 {
@@ -142,32 +214,37 @@ can render a countdown without an extra fetch:
 }
 ```
 
-### 5.2 New — auto-cancel (seller missed the 24h acceptance window)
+### 6.2 Auto-cancel — seller missed the acceptance window or the proof-submission window
 
-Sent once, to both parties, only by the cron (never by a manual cancel):
+Same `type` and payload shape for **both** timers; only the copy and
+`data.action` differ, so branch UI copy on `data.action` if you need to
+distinguish them (both just end in `status: "CANCELLED"`).
 
-| Recipient | Title | Body |
-|---|---|---|
-| Buyer | `Order Cancelled — Refund Issued` | `@{seller} didn't accept order {orderCode} within 24 hours. Your payment has been refunded.` |
-| Seller | `Order Expired` | `You missed the 24-hour window to accept order {orderCode}. It has been cancelled and refunded to the buyer.` |
+| Timer | Recipient | Title | Body | `data.action` |
+|---|---|---|---|---|
+| Acceptance (§3) | Buyer | `Order Cancelled — Refund Issued` | `@{seller} didn't accept order {orderCode} in time. Your payment has been refunded.` | `AUTO_CANCEL_UNACCEPTED` |
+| Acceptance (§3) | Seller | `Order Expired` | `You missed the window to accept order {orderCode}. It has been cancelled and refunded to the buyer.` | `AUTO_CANCEL_UNACCEPTED` |
+| Proof submission (§4) | Buyer | `Order Cancelled — Refund Issued` | `@{seller} didn't submit proof for order {orderCode} within 24 hours of accepting. Your payment has been refunded.` | `AUTO_CANCEL_UNSUBMITTED` |
+| Proof submission (§4) | Seller | `Order Expired` | `You missed the 24-hour window to submit proof for order {orderCode}. It has been cancelled and refunded to the buyer.` | `AUTO_CANCEL_UNSUBMITTED` |
 
-`type` is `"ORDER_AUTO_CANCELLED"` for both. `data` payload:
+`type` is `"ORDER_AUTO_CANCELLED"` for all four. `data` payload:
 
 ```json
 {
   "orderId": "...",
   "orderCode": "ORD-123",
   "status": "CANCELLED",
-  "action": "AUTO_CANCEL_UNACCEPTED",
+  "action": "AUTO_CANCEL_UNACCEPTED",   // or "AUTO_CANCEL_UNSUBMITTED"
   "timestamp": "..."
 }
 ```
 
-The buyer also gets a plain-text confirmation email. Use `data.action` if you
-need to distinguish this from a manual buyer/seller-initiated cancellation in
-the notification feed UI (both still just result in `status: "CANCELLED"`).
+The buyer also gets a plain-text confirmation email in both cases. Use
+`data.action` if you need to distinguish either from a manual
+buyer/seller-initiated cancellation in the notification feed UI (all three
+still just result in `status: "CANCELLED"`).
 
-### 5.3 New — auto-release (buyer missed the 24h review window)
+### 6.3 Auto-release — buyer missed the 24h review window
 
 Sent once, to both parties, only by the cron:
 
@@ -194,42 +271,47 @@ branch on). `data` payload:
 Use `data.action === "AUTO_RELEASE"` if the UI wants to say "Auto-released"
 instead of "You approved this" in an order history/timeline view.
 
-## 6. Socket events — nothing new
+## 7. Socket events — nothing new
 
-No new socket events were added. Both auto-actions reuse the **existing**
-`/order` namespace events, since they end in the same terminal statuses a
-manual action would:
+No new socket events were added. All three auto-actions reuse the
+**existing** `/order` namespace events, since they end in the same terminal
+statuses a manual action would:
 
 | Event | Fired by |
 |---|---|
-| `order:cancelled` | Auto-cancel (unaccepted order), same event as a manual cancel |
-| `order:released` | Auto-release (unreviewed proof), same event as a manual release |
+| `order:cancelled` | Auto-cancel (unaccepted order §3, or accepted-but-no-proof order §4), same event as a manual cancel |
+| `order:released` | Auto-release (unreviewed proof §5), same event as a manual release |
 
 If your UI already listens for these two events to refresh the order screen
 (per `ORDER_SOCKET_GUIDE.md`), no socket-handling changes are needed — only
-the push notification/history copy differs, plus the two new deadline
-fields for rendering countdowns.
+the push notification/history copy differs, plus the new deadline fields
+for rendering countdowns.
 
-## 7. Quick reference — field & timer summary
+## 8. Quick reference — field & timer summary
 
-| | `acceptDeadline` | `proofReviewDeadline` |
-|---|---|---|
-| Active while `status` is | `PENDING` | `PROOF_SUBMITTED` |
-| Set on | Order creation (payment authorized) | Proof submitted |
-| Cleared on | Seller accepts, or order cancelled | Buyer reviews (release/reject), or order cancelled |
-| Window length | 24h | 24h |
-| On expiry | Auto-cancel + refund buyer | Auto-release funds to seller |
-| Can be skipped by | — (no guard) | Open dispute or pending cancellation request |
-| Resulting status | `CANCELLED` | `RELEASED` |
-| Socket event | `order:cancelled` | `order:released` |
-| New notification `type` | `ORDER_AUTO_CANCELLED` | `ORDER_UPDATE` (buyer) / `PAYMENT_RECEIVED` (seller) |
+| | `acceptDeadline` | `proofSubmitDeadline` | `proofReviewDeadline` |
+|---|---|---|---|
+| Active while `status` is | `PENDING` | `IN_PROGRESS` | `PROOF_SUBMITTED` |
+| Set on | Order creation (payment authorized) | Seller accepts | Proof submitted |
+| Cleared on | Seller accepts, or order cancelled | Proof submitted, or order cancelled | Buyer reviews (release/reject), or order cancelled |
+| Window length | `promotionDate` if set & future, else 24h | 24h (flat) | 24h (flat) |
+| On expiry | Auto-cancel + refund buyer | Auto-cancel + refund buyer | Auto-release funds to seller |
+| Can be skipped by | — (no guard) | Open dispute | Open dispute or pending cancellation request |
+| Resulting status | `CANCELLED` | `CANCELLED` | `RELEASED` |
+| Socket event | `order:cancelled` | `order:cancelled` | `order:released` |
+| Notification `type` | `ORDER_AUTO_CANCELLED` | `ORDER_AUTO_CANCELLED` | `ORDER_UPDATE` (buyer) / `PAYMENT_RECEIVED` (seller) |
+| `data.action` | `AUTO_CANCEL_UNACCEPTED` | `AUTO_CANCEL_UNSUBMITTED` | `AUTO_RELEASE` |
 
 ## Related code
 
-- `prisma/schema/order.prisma` — `Order.acceptDeadline`, `Order.proofReviewDeadline`
-- `prisma/migrations/20260916150000_add_order_deadlines/`
-- `src/main/order-scheduler/order-scheduler.service.ts` — the two cron jobs
-- `src/main/order/order.service.ts` — `submitProof()` (sets `proofReviewDeadline`),
-  `autoCancelUnacceptedOrder()`, `statusTimestampData()` (clears deadlines on transition)
+- `prisma/schema/order.prisma` — `Order.acceptDeadline`, `Order.proofSubmitDeadline`, `Order.proofReviewDeadline`
+- `prisma/migrations/20260916150000_add_order_deadlines/`,
+  `prisma/migrations/20260917090000_add_order_proof_submit_deadline/`
+- `src/main/order-scheduler/order-scheduler.service.ts` — the three cron jobs
+  (`handleAcceptanceExpiry`, `handleProofSubmissionExpiry`, `handleProofReviewExpiry`)
+- `src/main/order/order.service.ts` — `submitProof()` (sets `proofReviewDeadline`,
+  clears `proofSubmitDeadline`), `autoCancelExpiredOrder()` (shared helper),
+  `autoCancelUnacceptedOrder()`, `autoCancelUnsubmittedOrder()`,
+  `statusTimestampData()` (sets/clears deadlines on every status transition)
 - `src/main/payments/payments.service.ts` — `createOrderWithPaymentMethod()`
-  (sets `acceptDeadline`), `autoReleaseEscrow()`
+  (computes `acceptDeadline` from `serviceRequest.promotionDate`), `autoReleaseEscrow()`
