@@ -19,9 +19,6 @@ import { OrderGateway } from "./order.gateway";
 
 // Buyer proof-review window — after this, escrow funds are auto-released to the seller.
 const PROOF_REVIEW_WINDOW_MS = 24 * 60 * 60 * 1000;
-// Seller proof-submission window (after accepting) — after this, the order is
-// auto-cancelled and the buyer refunded if no proof has been submitted yet.
-const PROOF_SUBMIT_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 export function buildOrderTimeline(order: {
     createdAt: Date;
@@ -54,26 +51,16 @@ function statusTimestampData(status: OrderStatus): Record<string, Date | null> {
     const now = new Date();
     switch (status) {
         case OrderStatus.IN_PROGRESS:
-            // Seller accepted — the acceptance deadline no longer applies, and a fresh
-            // 24h window starts for the seller to submit proof.
-            return {
-                inProgressAt: now,
-                acceptDeadline: null,
-                proofSubmitDeadline: new Date(now.getTime() + PROOF_SUBMIT_WINDOW_MS),
-            };
+            // Seller accepted — the 24h acceptance deadline no longer applies.
+            return { inProgressAt: now, acceptDeadline: null };
         case OrderStatus.PROOF_SUBMITTED:
-            return { proofSubmittedAt: now, proofSubmitDeadline: null };
+            return { proofSubmittedAt: now };
         case OrderStatus.RESUBMIT:
             return { resubmitAt: now };
         case OrderStatus.RELEASED:
             return { releasedAt: now, proofReviewDeadline: null };
         case OrderStatus.CANCELLED:
-            return {
-                cancelledAt: now,
-                acceptDeadline: null,
-                proofSubmitDeadline: null,
-                proofReviewDeadline: null,
-            };
+            return { cancelledAt: now, acceptDeadline: null, proofReviewDeadline: null };
         default:
             return {};
     }
@@ -201,32 +188,17 @@ export class OrdersService {
     }
 
     /**
-     * Scheduler-triggered (OrderSchedulerService) auto-cancel: void the held
-     * PaymentIntent, cancel the order, refund the buyer, and notify both
-     * parties. Shared by the two expiry timers below. Mirrors the manual
-     * seller-cancels-an-order path in updateStatus().
+     * Scheduler-triggered (OrderSchedulerService): seller didn't move the order
+     * to IN_PROGRESS before its 24h acceptDeadline. Void the held PaymentIntent,
+     * cancel the order, and notify both parties. Mirrors the manual
+     * seller-cancels-a-PENDING-order path in updateStatus().
      */
-    private async autoCancelExpiredOrder(
-        orderId: string,
-        expectedStatus: typeof OrderStatus.PENDING | typeof OrderStatus.IN_PROGRESS,
-        copy: {
-            action: string;
-            buyerBody: (order: any) => string;
-            sellerBody: (order: any) => string;
-            emailBody: (order: any) => string;
-        },
-    ) {
+    async autoCancelUnacceptedOrder(orderId: string) {
         const order = await this.prisma.order.findUnique({
             where: { id: orderId },
             include: { buyer: true, seller: true, service: true },
         });
-        if (!order || order.status !== expectedStatus) return order;
-
-        // Don't preempt an admin's dispute resolution — leave the order locked
-        // until the dispute is resolved, same as the manual release/proof paths.
-        if (expectedStatus === OrderStatus.IN_PROGRESS && (await this.hasOpenDispute(order.id))) {
-            return order;
-        }
+        if (!order || order.status !== OrderStatus.PENDING) return order;
 
         if (order.paymentIntentId) {
             try {
@@ -255,19 +227,20 @@ export class OrdersService {
         });
         await this.markLinkedServiceRequestCancelled(order);
 
+        const sellerName = order.seller?.username ?? "The seller";
         try {
             await Promise.all([
                 this.firebaseNotificationService.sendToUser(
                     order.buyerId,
                     {
                         title: "Order Cancelled — Refund Issued",
-                        body: copy.buyerBody(order),
+                        body: `@${sellerName} didn't accept order ${order.orderCode} within 24 hours. Your payment has been refunded.`,
                         type: "ORDER_AUTO_CANCELLED" as any,
                         data: {
                             orderId: order.id,
                             orderCode: order.orderCode,
                             status: OrderStatus.CANCELLED,
-                            action: copy.action,
+                            action: "AUTO_CANCEL_UNACCEPTED",
                             timestamp: new Date().toISOString(),
                         },
                     },
@@ -277,13 +250,13 @@ export class OrdersService {
                     order.sellerId,
                     {
                         title: "Order Expired",
-                        body: copy.sellerBody(order),
+                        body: `You missed the 24-hour window to accept order ${order.orderCode}. It has been cancelled and refunded to the buyer.`,
                         type: "ORDER_AUTO_CANCELLED" as any,
                         data: {
                             orderId: order.id,
                             orderCode: order.orderCode,
                             status: OrderStatus.CANCELLED,
-                            action: copy.action,
+                            action: "AUTO_CANCEL_UNACCEPTED",
                             timestamp: new Date().toISOString(),
                         },
                     },
@@ -300,7 +273,7 @@ export class OrdersService {
                 "DaConnect - Order Cancelled & Refunded",
                 `
                 <p>Hello ${order.buyer.full_name || "Buyer"},</p>
-                <p>${copy.emailBody(order)}</p>
+                <p>The seller did not accept your order <strong>${order.orderCode}</strong> for the service <strong>${order.service.serviceName}</strong> within 24 hours, so it has been automatically cancelled and your payment has been refunded.</p>
                 <p>Thank you,<br/>DaConnect Team</p>
                 `,
             );
@@ -310,39 +283,6 @@ export class OrdersService {
 
         this.orderGateway.emitCancelled(updated);
         return { ...updated, timeline: buildOrderTimeline(updated) };
-    }
-
-    /**
-     * Seller didn't move the order to IN_PROGRESS before its acceptDeadline
-     * (the buyer's own promotion/completion date when one was given, else a
-     * flat 24h window — see createOrderWithPaymentMethod()).
-     */
-    async autoCancelUnacceptedOrder(orderId: string) {
-        return this.autoCancelExpiredOrder(orderId, OrderStatus.PENDING, {
-            action: "AUTO_CANCEL_UNACCEPTED",
-            buyerBody: (order) =>
-                `@${order.seller?.username ?? "The seller"} didn't accept order ${order.orderCode} in time. Your payment has been refunded.`,
-            sellerBody: (order) =>
-                `You missed the window to accept order ${order.orderCode}. It has been cancelled and refunded to the buyer.`,
-            emailBody: (order) =>
-                `The seller did not accept your order <strong>${order.orderCode}</strong> for the service <strong>${order.service.serviceName}</strong> in time, so it has been automatically cancelled and your payment has been refunded.`,
-        });
-    }
-
-    /**
-     * Seller accepted but didn't submit proof within the 24h
-     * proofSubmitDeadline (set when the order moves to IN_PROGRESS).
-     */
-    async autoCancelUnsubmittedOrder(orderId: string) {
-        return this.autoCancelExpiredOrder(orderId, OrderStatus.IN_PROGRESS, {
-            action: "AUTO_CANCEL_UNSUBMITTED",
-            buyerBody: (order) =>
-                `@${order.seller?.username ?? "The seller"} didn't submit proof for order ${order.orderCode} within 24 hours of accepting. Your payment has been refunded.`,
-            sellerBody: (order) =>
-                `You missed the 24-hour window to submit proof for order ${order.orderCode}. It has been cancelled and refunded to the buyer.`,
-            emailBody: (order) =>
-                `The seller accepted your order <strong>${order.orderCode}</strong> for the service <strong>${order.service.serviceName}</strong> but did not submit proof within 24 hours, so it has been automatically cancelled and your payment has been refunded.`,
-        });
     }
 
     //----------------------- CREATE ORDER -----------------------
@@ -1234,7 +1174,6 @@ export class OrdersService {
                     push: proofUrls,
                 },
                 proofSubmittedAt: new Date(),
-                proofSubmitDeadline: null,
                 proofReviewDeadline,
                 isCancalProofSubmitted: false,
             },
