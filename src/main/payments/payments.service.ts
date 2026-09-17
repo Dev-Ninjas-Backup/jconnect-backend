@@ -21,7 +21,7 @@ import { ConfirmSetupIntentDto } from "./dto/confirm-setup-intent.dto";
 import { PaginationDto } from "./dto/pagination.dto";
 
 // Seller acceptance window — after this, an unaccepted order is auto-cancelled/refunded.
-const ACCEPT_WINDOW_MS = 24 * 60 * 60 * 1000;
+const ACCEPT_WINDOW_MS = 12 * 60 * 60 * 1000;
 
 const serviceRequestSocketInclude = {
     service: {
@@ -875,7 +875,7 @@ export class PaymentService {
                 amount: service.price,
                 seller_amount: sellerAmount,
                 status: OrderStatus.PENDING,
-                // Seller has 24 hours to accept (move to IN_PROGRESS) before this order is
+                // Seller has 12 hours to accept (move to IN_PROGRESS) before this order is
                 // auto-cancelled and the buyer is refunded — see OrderSchedulerService.
                 acceptDeadline: new Date(Date.now() + ACCEPT_WINDOW_MS),
             },

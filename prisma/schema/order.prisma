@@ -37,8 +37,11 @@ model Order {
 
   //                   Auto-expiry deadlines (mirrors RepostOrder's countdownEndsAt/reviewWindowEndsAt)
 
-  // Seller must move the order to IN_PROGRESS before this, else it's auto-cancelled and refunded.
+  // Seller must move the order to IN_PROGRESS before this (12h from order creation),
+  // else it's auto-cancelled and refunded.
   acceptDeadline      DateTime?
+  // Seller must submit proof before this (24h after accepting), else it's auto-cancelled and refunded.
+  proofSubmitDeadline DateTime?
   // Buyer must review submitted proof before this, else funds are auto-released to the seller.
   proofReviewDeadline DateTime?
 
@@ -62,5 +65,6 @@ model Order {
   serviceRequest ServiceRequest? @relation(fields: [serviceRequestId], references: [id], onDelete: SetNull)
 
   @@index([status, acceptDeadline])
+  @@index([status, proofSubmitDeadline])
   @@index([status, proofReviewDeadline])
 }
